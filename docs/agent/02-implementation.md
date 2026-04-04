@@ -2,6 +2,10 @@
 
 > 深入剖析多 Agent 编排的架构设计、生成流程、上下文传递和协作机制。
 
+<p align="center">
+<a href="#一架构总览">架构总览</a> · <a href="#二agent-生成流程--四条路径">生成流程</a> · <a href="#三工具池系统--三层过滤">工具池系统</a> · <a href="#四上下文传递机制">上下文传递</a> · <a href="#五agent-teams-内部机制">Teams 内部机制</a> · <a href="#六后台任务引擎">后台任务引擎</a> · <a href="#七dreamtask--自动记忆整合">DreamTask</a> · <a href="#八worktree-隔离实现">Worktree 隔离</a> · <a href="#九权限同步机制">权限同步</a> · <a href="#十agent-生命周期完整数据流">生命周期数据流</a> · <a href="#十一关键源文件索引">源文件索引</a> · <a href="#十二feature-flags">Feature Flags</a>
+</p>
+
 ![实现架构总览](./images/05-architecture.png)
 
 ---

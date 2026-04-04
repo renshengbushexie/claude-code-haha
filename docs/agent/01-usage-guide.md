@@ -2,6 +2,10 @@
 
 > 让 Claude Code 同时调度多个专业代理，并行处理复杂任务。
 
+<p align="center">
+<a href="#一什么是多-agent-系统">多 Agent 系统</a> · <a href="#二六种内置-agent">六种内置 Agent</a> · <a href="#三如何生成-agent">如何生成 Agent</a> · <a href="#四后台任务管理">后台任务管理</a> · <a href="#五agent-teams--多代理协作">Agent Teams</a> · <a href="#六自定义-agent">自定义 Agent</a> · <a href="#七权限模式">权限模式</a> · <a href="#八快速参考">快速参考</a>
+</p>
+
 ![多 Agent 系统概览](./images/01-agent-overview.png)
 
 ---
