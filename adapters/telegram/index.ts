@@ -14,6 +14,7 @@ import { loadConfig } from '../common/config.js'
 import { splitMessage, formatToolUse, formatPermissionRequest } from '../common/format.js'
 import { SessionStore } from '../common/session-store.js'
 import { AdapterHttpClient } from '../common/http-client.js'
+import { isPaired, tryPair } from '../common/pairing.js'
 
 const TELEGRAM_TEXT_LIMIT = 4000 // leave margin below 4096
 
@@ -42,9 +43,21 @@ const pendingProjectSelection = new Map<string, boolean>()
 
 // ---------- helpers ----------
 
-function isAllowed(userId: number): boolean {
-  const list = config.telegram.allowedUsers
-  return list.length === 0 || list.includes(userId)
+function isAllowedUser(userId: number): boolean {
+  try {
+    const cfgFile = JSON.parse(
+      require('node:fs').readFileSync(
+        require('node:path').join(
+          process.env.CLAUDE_CONFIG_DIR || require('node:path').join(require('node:os').homedir(), '.claude'),
+          'adapters.json'
+        ),
+        'utf-8'
+      )
+    )
+    return isPaired('telegram', userId, cfgFile)
+  } catch {
+    return false
+  }
 }
 
 function getBuffer(chatId: string): MessageBuffer {
@@ -264,11 +277,29 @@ bot.command('stop', (ctx) => {
 })
 
 bot.on('message:text', (ctx) => {
-  if (!ctx.from || !isAllowed(ctx.from.id)) return
+  if (!ctx.from) return
+
+  // 只处理私聊
+  if (ctx.chat.type !== 'private') return
+
   if (!dedup.tryRecord(String(ctx.message.message_id))) return
 
   const chatId = String(ctx.chat.id)
+  const userId = ctx.from.id
   const text = ctx.message.text
+
+  // 检查配对状态
+  if (!isAllowedUser(userId)) {
+    // 尝试配对
+    const displayName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ')
+    const success = tryPair(text.trim(), { userId, displayName }, 'telegram')
+    if (success) {
+      ctx.reply('✅ 配对成功！现在可以开始聊天了。\n\n发送消息即可与 Claude 对话。')
+    } else {
+      ctx.reply('🔒 未授权。请在 Claude Code 桌面端生成配对码后发送给我。')
+    }
+    return
+  }
 
   enqueue(chatId, async () => {
     // Check if user is responding to project selection
