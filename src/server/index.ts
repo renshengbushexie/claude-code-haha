@@ -13,6 +13,7 @@ import { teamWatcher } from './services/teamWatcher.js'
 import { cronScheduler } from './services/cronScheduler.js'
 import { handleProxyRequest } from './proxy/handler.js'
 import { ProviderService } from './services/providerService.js'
+import { handleHahaOAuthCallback } from './api/haha-oauth.js'
 
 function readArgValue(flag: string): string | undefined {
   const args = process.argv.slice(2)
@@ -126,6 +127,10 @@ export function startServer(port = PORT, host = HOST) {
         })
         if (upgraded) return undefined
         return new Response('WebSocket upgrade failed', { status: 400 })
+      }
+
+      if (url.pathname === '/callback') {
+        return handleHahaOAuthCallback(url)
       }
 
       // REST API

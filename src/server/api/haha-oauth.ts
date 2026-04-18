@@ -2,7 +2,8 @@
  * Haha OAuth REST API
  *
  * POST   /api/haha-oauth/start    — 生成 PKCE+state,返回 authorize URL
- * GET    /api/haha-oauth/callback — 用户浏览器 redirect 到此,完成 token 交换
+ * GET    /callback                — 用户浏览器 redirect 到此,完成 token 交换
+ * GET    /api/haha-oauth/callback — 兼容旧路径
  * GET    /api/haha-oauth          — 查询当前登录状态(不回传 token 本体)
  * GET    /api/haha-oauth/status   — 同上(legacy path)
  * DELETE /api/haha-oauth          — 登出,删除 token 文件
@@ -52,24 +53,7 @@ export async function handleHahaOAuthApi(
     }
 
     if (action === 'callback' && req.method === 'GET') {
-      const code = url.searchParams.get('code')
-      const state = url.searchParams.get('state')
-      const error = url.searchParams.get('error')
-
-      if (error) {
-        return html(renderCallbackPage(false, `OAuth provider returned: ${error}`))
-      }
-      if (!code || !state) {
-        return html(renderCallbackPage(false, 'Missing code or state parameter'))
-      }
-
-      try {
-        await hahaOAuthService.completeSession(code, state)
-        return html(renderCallbackPage(true, null))
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        return html(renderCallbackPage(false, msg))
-      }
+      return handleHahaOAuthCallback(url)
     }
 
     if ((action === undefined || action === 'status') && req.method === 'GET') {
@@ -93,6 +77,27 @@ export async function handleHahaOAuthApi(
     return Response.json({ error: 'Not Found' }, { status: 404 })
   } catch (error) {
     return errorResponse(error)
+  }
+}
+
+export async function handleHahaOAuthCallback(url: URL): Promise<Response> {
+  const code = url.searchParams.get('code')
+  const state = url.searchParams.get('state')
+  const error = url.searchParams.get('error')
+
+  if (error) {
+    return html(renderCallbackPage(false, `OAuth provider returned: ${error}`))
+  }
+  if (!code || !state) {
+    return html(renderCallbackPage(false, 'Missing code or state parameter'))
+  }
+
+  try {
+    await hahaOAuthService.completeSession(code, state)
+    return html(renderCallbackPage(true, null))
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return html(renderCallbackPage(false, msg))
   }
 }
 

@@ -53,6 +53,7 @@ type FetchProfileFn = (
 ) => Promise<{ subscriptionType: SubscriptionType | null }>
 
 const SESSION_TTL_MS = 5 * 60 * 1000
+const OAUTH_CALLBACK_PATH = '/callback'
 
 export class HahaOAuthService {
   private sessions = new Map<string, OAuthSession>()
@@ -108,14 +109,13 @@ export class HahaOAuthService {
     const codeChallenge = generateCodeChallenge(codeVerifier)
     const state = generateState()
 
-    const baseUrl = buildAuthUrl({
+    const authorizeUrl = buildAuthUrl({
       codeChallenge,
       state,
       port: serverPort,
       isManual: false,
       loginWithClaudeAi: true,
     })
-    const authorizeUrl = this.rewriteCallbackPath(baseUrl, serverPort)
 
     const session: OAuthSession = {
       state,
@@ -126,15 +126,6 @@ export class HahaOAuthService {
     }
     this.sessions.set(state, session)
     return session
-  }
-
-  private rewriteCallbackPath(url: string, port: number): string {
-    const u = new URL(url)
-    u.searchParams.set(
-      'redirect_uri',
-      `http://localhost:${port}/api/haha-oauth/callback`,
-    )
-    return u.toString()
   }
 
   getSession(state: string): OAuthSession | null {
@@ -197,7 +188,7 @@ export class HahaOAuthService {
     const requestBody = {
       grant_type: 'authorization_code',
       code,
-      redirect_uri: `http://localhost:${port}/api/haha-oauth/callback`,
+      redirect_uri: `http://localhost:${port}${OAUTH_CALLBACK_PATH}`,
       client_id: getOauthConfig().CLIENT_ID,
       code_verifier: verifier,
       state,

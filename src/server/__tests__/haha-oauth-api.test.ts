@@ -55,7 +55,7 @@ describe('POST /api/haha-oauth/start', () => {
     const data = (await res.json()) as { authorizeUrl: string; state: string }
     expect(data.authorizeUrl).toContain('code_challenge_method=S256')
     expect(data.authorizeUrl).toContain(
-      encodeURIComponent('http://localhost:54321/api/haha-oauth/callback'),
+      encodeURIComponent('http://localhost:54321/callback'),
     )
     expect(data.state).toMatch(/^[A-Za-z0-9_-]+$/)
   })

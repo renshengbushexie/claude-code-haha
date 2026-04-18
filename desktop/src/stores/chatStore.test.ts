@@ -287,6 +287,44 @@ describe('chatStore history mapping', () => {
     })
   })
 
+  it('flushes the previous assistant draft before starting a new user turn', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: {
+          messages: [],
+          chatState: 'streaming',
+          connectionState: 'connected',
+          streamingText: '上一次分析结果 **还在流式区域**',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    useChatStore.getState().sendMessage(TEST_SESSION_ID, '你是什么模型？')
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toMatchObject([
+      {
+        type: 'assistant_text',
+        content: '上一次分析结果 **还在流式区域**',
+      },
+      {
+        type: 'user_text',
+        content: '你是什么模型？',
+      },
+    ])
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.streamingText).toBe('')
+  })
+
   it('routes member-session messages through team mailbox delivery instead of websocket', async () => {
     const memberSessionId = 'team-member:security-reviewer@test-team'
     getMemberBySessionIdMock.mockReturnValue({

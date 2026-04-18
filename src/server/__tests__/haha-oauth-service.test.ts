@@ -82,7 +82,7 @@ describe('HahaOAuthService — session management', () => {
     expect(session.authorizeUrl).toContain(`state=${encodeURIComponent(session.state)}`)
     expect(session.authorizeUrl).toContain('redirect_uri=')
     expect(session.authorizeUrl).toContain(encodeURIComponent(
-      'http://localhost:54321/api/haha-oauth/callback',
+      'http://localhost:54321/callback',
     ))
   })
 

@@ -180,8 +180,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     set((s) => {
       const session = s.sessions[sessionId] ?? createDefaultSessionState()
+      if (flushTimer) {
+        clearTimeout(flushTimer)
+        flushTimer = null
+      }
+      const bufferedDelta = pendingDelta
+      pendingDelta = ''
+      const pendingAssistantText = `${session.streamingText}${bufferedDelta}`.trim()
 
-      const newMessages = [...session.messages]
+      const newMessages = pendingAssistantText
+        ? [
+            ...session.messages,
+            {
+              id: nextId(),
+              type: 'assistant_text' as const,
+              content: pendingAssistantText,
+              timestamp: Date.now(),
+            },
+          ]
+        : [...session.messages]
       if (!isMemberSession && allTasksDone) {
         newMessages.push({
           id: nextId(),
