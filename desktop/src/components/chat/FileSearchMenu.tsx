@@ -1,6 +1,8 @@
 import { forwardRef, useState, useEffect, useRef, useCallback, useImperativeHandle } from 'react'
+import { ApiError } from '../../api/client'
 import { filesystemApi } from '../../api/filesystem'
 import { useTranslation } from '../../i18n'
+import type { TranslationKey } from '../../i18n'
 
 type DirEntry = {
   name: string
@@ -21,11 +23,37 @@ type Props = {
 export const FileSearchMenu = forwardRef<FileSearchMenuHandle, Props>(({ cwd, filter = '', onSelect }, ref) => {
   const t = useTranslation()
   const [entries, setEntries] = useState<DirEntry[]>([])
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [errorKey, setErrorKey] = useState<TranslationKey | null>(null)
   const [currentPath, setCurrentPath] = useState(cwd)
   const [loading, setLoading] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
   const currentPathRef = useRef(cwd)
+
+  const getErrorState = (error: unknown): { errorKey: TranslationKey | null; errorMessage: string | null } => {
+    if (error instanceof ApiError) {
+      if (error.status === 403) {
+        return { errorKey: 'fileSearch.accessDenied', errorMessage: null }
+      }
+
+      const apiMessage =
+        typeof error.body === 'string'
+          ? error.body
+          : typeof error.body === 'object' &&
+              error.body !== null &&
+              'error' in error.body &&
+              typeof error.body.error === 'string'
+            ? error.body.error
+            : null
+
+      if (apiMessage) {
+        return { errorKey: null, errorMessage: apiMessage }
+      }
+    }
+
+    return { errorKey: 'fileSearch.loadFailed', errorMessage: null }
+  }
 
   // Parse filter: if it contains '/', navigate to that subdir and search the rest
   // Uses currentPathRef as base so nested paths navigate from current depth
@@ -44,6 +72,8 @@ export const FileSearchMenu = forwardRef<FileSearchMenuHandle, Props>(({ cwd, fi
   // Load directory entries
   const loadDir = useCallback(async (dirPath: string, searchQuery: string) => {
     setLoading(true)
+    setErrorMessage(null)
+    setErrorKey(null)
     // Only update currentPath if actually navigating to a different directory
     if (dirPath !== currentPathRef.current) {
       setCurrentPath(dirPath)
@@ -58,8 +88,11 @@ export const FileSearchMenu = forwardRef<FileSearchMenuHandle, Props>(({ cwd, fi
         setEntries(result.entries)
       }
       setSelectedIndex(0)
-    } catch {
+    } catch (error) {
       setEntries([])
+      const nextError = getErrorState(error)
+      setErrorKey(nextError.errorKey)
+      setErrorMessage(nextError.errorMessage)
     }
     setLoading(false)
   }, [])
@@ -136,6 +169,10 @@ export const FileSearchMenu = forwardRef<FileSearchMenuHandle, Props>(({ cwd, fi
       <div ref={listRef} className="max-h-[300px] overflow-y-auto py-1">
         {loading && entries.length === 0 ? (
           <div className="px-4 py-6 text-center text-xs text-[var(--color-text-tertiary)]">{t('fileSearch.searching')}</div>
+        ) : (errorKey || errorMessage) ? (
+          <div className="px-4 py-6 text-center text-xs text-[var(--color-error)]">
+            {errorKey ? t(errorKey) : errorMessage}
+          </div>
         ) : entries.length === 0 ? (
           <div className="px-4 py-6 text-center text-xs text-[var(--color-text-tertiary)]">
             {filter ? t('fileSearch.noMatch') : t('fileSearch.noFiles')}

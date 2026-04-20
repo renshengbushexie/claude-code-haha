@@ -568,6 +568,8 @@ export const zh: Record<TranslationKey, string> = {
   'fileSearch.searching': '搜索中...',
   'fileSearch.noMatch': '没有匹配的文件',
   'fileSearch.noFiles': '此目录下无文件',
+  'fileSearch.accessDenied': '无法访问此目录',
+  'fileSearch.loadFailed': '目录加载失败',
   'fileSearch.navigate': '导航',
   'fileSearch.attach': '附加',
   'fileSearch.close': '关闭',

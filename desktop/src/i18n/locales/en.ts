@@ -566,6 +566,8 @@ export const en = {
   'fileSearch.searching': 'Searching...',
   'fileSearch.noMatch': 'No files match',
   'fileSearch.noFiles': 'No files in this directory',
+  'fileSearch.accessDenied': 'Cannot access this directory',
+  'fileSearch.loadFailed': 'Failed to load directory',
   'fileSearch.navigate': 'navigate',
   'fileSearch.attach': 'attach',
   'fileSearch.close': 'close',

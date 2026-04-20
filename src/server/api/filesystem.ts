@@ -19,6 +19,26 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
   '.avif': 'image/avif',
 }
 
+function isWithinRoot(targetPath: string, rootPath: string): boolean {
+  return targetPath === rootPath || targetPath.startsWith(`${rootPath}${path.sep}`)
+}
+
+function isAllowedFilesystemPath(targetPath: string): boolean {
+  const resolvedPath = path.resolve(targetPath)
+  const homeDir = path.resolve(os.homedir())
+
+  if (isWithinRoot(resolvedPath, homeDir) || isWithinRoot(resolvedPath, '/tmp')) {
+    return true
+  }
+
+  // macOS reports /tmp as /private/tmp via native folder pickers and realpath().
+  if (process.platform === 'darwin' && isWithinRoot(resolvedPath, '/private/tmp')) {
+    return true
+  }
+
+  return false
+}
+
 export async function handleFilesystemRoute(pathname: string, url: URL): Promise<Response> {
   if (pathname === '/api/filesystem/browse') {
     return handleBrowse(url)
@@ -39,9 +59,7 @@ async function handleServeFile(url: URL): Promise<Response> {
 
   const resolvedPath = path.resolve(filePath)
 
-  // Path whitelist: only allow access under home directory or /tmp
-  const homeDir = os.homedir()
-  if (!resolvedPath.startsWith(homeDir) && !resolvedPath.startsWith('/tmp')) {
+  if (!isAllowedFilesystemPath(resolvedPath)) {
     return json({ error: 'Access denied: path outside allowed directory' }, 403)
   }
 
@@ -80,9 +98,7 @@ async function handleBrowse(url: URL): Promise<Response> {
   const targetPath = url.searchParams.get('path') || process.env.HOME || '/'
   const resolvedPath = path.resolve(targetPath)
 
-  // Path whitelist: only allow browsing under home directory or /tmp
-  const homeDir = os.homedir()
-  if (!resolvedPath.startsWith(homeDir) && !resolvedPath.startsWith('/tmp')) {
+  if (!isAllowedFilesystemPath(resolvedPath)) {
     return json({ error: 'Access denied: path outside allowed directory' }, 403)
   }
 
