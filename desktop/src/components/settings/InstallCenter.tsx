@@ -482,6 +482,26 @@ export function InstallCenter() {
 
 function CliLauncherStatusPanel({ status }: { status: CliLauncherStatus }) {
   const t = useTranslation()
+  const bundledCommand = status.command || 'claude-haha'
+  const exampleCommands = [
+    {
+      label: t('settings.install.cliUseOfficial'),
+      command:
+        'claude plugin install skill-creator@claude-plugins-official --scope user',
+    },
+    {
+      label: t('settings.install.cliUseBundled', {
+        command: bundledCommand,
+      }),
+      command: `${bundledCommand} plugin install skill-creator@claude-plugins-official --scope user`,
+    },
+    {
+      label: t('settings.install.cliUseBundled', {
+        command: bundledCommand,
+      }),
+      command: `${bundledCommand} mcp add docs --transport http https://example.com/mcp`,
+    },
+  ]
 
   let statusText = t('settings.install.cliUnavailable')
   let statusClassName = 'border-[var(--color-danger)]/25 bg-[var(--color-danger)]/10 text-[var(--color-danger)]'
@@ -530,6 +550,24 @@ function CliLauncherStatusPanel({ status }: { status: CliLauncherStatus }) {
           })}
         </p>
       )}
+
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+        <p className="text-xs leading-6 text-[var(--color-text-secondary)]">
+          {t('settings.install.cliSharedConfig')}
+        </p>
+        <div className="mt-3 space-y-2">
+          {exampleCommands.map((example) => (
+            <div key={example.command} className="space-y-1">
+              <p className="text-[11px] text-[var(--color-text-tertiary)]">
+                {example.label}
+              </p>
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-3 py-2 font-mono text-xs text-[var(--color-text-primary)] break-all">
+                {example.command}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

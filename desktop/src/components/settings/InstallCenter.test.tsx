@@ -109,6 +109,9 @@ vi.mock('../../i18n', () => {
     'settings.install.cliLocation': 'CLI 路径',
     'settings.install.cliConfigTarget': 'PATH 集成目标：{target}',
     'settings.install.cliError': '内置 CLI 配置告警：{message}',
+    'settings.install.cliSharedConfig': '后续如果你想直接通过命令行安装 Skills、Plugins 或 MCP：电脑上本身装了官方 Claude Code，就继续使用 `claude`；如果没有，就使用 `claude-haha`。这两条命令共用同一套 Skills / Plugins / MCP 配置。',
+    'settings.install.cliUseOfficial': '如果你已经安装了官方 Claude Code，继续用原版命令：',
+    'settings.install.cliUseBundled': '如果没有官方 CLI，就使用我们打包的 `{command}`：',
     'settings.install.contextDefault': '默认目录提示',
     'settings.install.contextUsing': '当前安装会话目录：{path}',
     'settings.install.contextTitle': '执行目录',
@@ -216,6 +219,17 @@ describe('InstallCenter', () => {
 
     expect(await screen.findByText('claude-haha')).toBeInTheDocument()
     expect(screen.getByText('已安装完成；请新开一个终端以加载 PATH 变更。')).toBeInTheDocument()
+    expect(screen.getByText(/共用同一套 Skills \/ Plugins \/ MCP 配置/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'claude plugin install skill-creator@claude-plugins-official --scope user',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'claude-haha mcp add docs --transport http https://example.com/mcp',
+      ),
+    ).toBeInTheDocument()
     expect(screen.getByTestId('message-list')).toHaveTextContent('session:installer-1')
   })
 })
