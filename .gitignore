@@ -65,3 +65,5 @@ runtime/__pycache__
 
 # IDE
 .idea
+# OpenCode (local agent context, not shared)
+.opencode/
