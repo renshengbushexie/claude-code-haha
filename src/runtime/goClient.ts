@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { homedir, platform } from 'node:os'
 import { join } from 'node:path'
 
@@ -26,6 +26,33 @@ export interface HealthResponse {
   db_path: string
 }
 
+export type TaskState =
+  | 'pending'
+  | 'queued'
+  | 'running'
+  | 'blocked'
+  | 'retrying'
+  | 'completed'
+  | 'failed'
+  | 'timeout'
+  | 'cancelled'
+  | 'manual_attention'
+
+export const TERMINAL_STATES: ReadonlySet<TaskState> = new Set([
+  'completed',
+  'failed',
+  'timeout',
+  'cancelled',
+])
+
+export interface TaskTransition {
+  seq: number
+  ts: number
+  from: TaskState
+  to: TaskState
+  reason?: string
+}
+
 export interface Task {
   id: string
   session_id?: string | null
@@ -33,7 +60,7 @@ export interface Task {
   prompt: string
   model?: string | null
   cwd: string
-  status: string
+  status: TaskState
   priority: number
   max_attempts: number
   attempts_used: number
@@ -50,6 +77,28 @@ export interface CreateTaskInput {
   model?: string
   session_id?: string
   priority?: number
+}
+
+export type RuntimeErrorCode =
+  | 'not_found'
+  | 'illegal_transition'
+  | 'state_mismatch'
+  | 'invalid_json'
+  | 'missing_states'
+  | 'missing_prompt'
+  | 'missing_cwd'
+  | 'db_error'
+  | 'unknown'
+
+export class RuntimeError extends Error {
+  readonly status: number
+  readonly code: RuntimeErrorCode
+  constructor(status: number, code: RuntimeErrorCode, message: string) {
+    super(`runtime ${status} ${code}: ${message}`)
+    this.name = 'RuntimeError'
+    this.status = status
+    this.code = code
+  }
 }
 
 export class RuntimeClient {
@@ -75,6 +124,31 @@ export class RuntimeClient {
     return this.req<Task>('GET', `/v1/tasks/${encodeURIComponent(id)}`)
   }
 
+  transitionTask(
+    id: string,
+    from: TaskState,
+    to: TaskState,
+    reason?: string,
+  ): Promise<Task> {
+    return this.req<Task>('POST', `/v1/tasks/${encodeURIComponent(id)}/transition`, {
+      from,
+      to,
+      ...(reason ? { reason } : {}),
+    })
+  }
+
+  cancelTask(id: string, reason?: string): Promise<Task> {
+    return this.req<Task>('POST', `/v1/tasks/${encodeURIComponent(id)}/cancel`,
+      reason ? { reason } : {})
+  }
+
+  getTaskTransitions(id: string): Promise<TaskTransition[]> {
+    return this.req<{ transitions: TaskTransition[] }>(
+      'GET',
+      `/v1/tasks/${encodeURIComponent(id)}/transitions`,
+    ).then((r) => r.transitions)
+  }
+
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
     const { status, body: text } = await rawHttp(this.endpoint, method, path, body)
     if (status >= 200 && status < 300) {
@@ -85,7 +159,18 @@ export class RuntimeClient {
         throw new Error(`bad json from runtime: ${(e as Error).message}`)
       }
     }
-    throw new Error(`runtime ${status}: ${text}`)
+    let code: RuntimeErrorCode = 'unknown'
+    let message = text
+    try {
+      const parsed = JSON.parse(text) as { error?: { code?: string; message?: string } }
+      if (parsed?.error) {
+        code = (parsed.error.code as RuntimeErrorCode) ?? 'unknown'
+        message = parsed.error.message ?? text
+      }
+    } catch {
+      // non-JSON error body — keep raw text as message
+    }
+    throw new RuntimeError(status, code, message)
   }
 }
 
@@ -208,6 +293,13 @@ export async function startRuntime(opts: StartOptions = {}): Promise<RuntimeHand
   })
 
   const endpointFile = join(dataDir, 'runtime.endpoint')
+  // Stale file from a prior crashed/killed runtime would otherwise be read as
+  // the "current" endpoint and we'd dial a dead pipe. Drop it before spawning.
+  try {
+    rmSync(endpointFile, { force: true })
+  } catch {
+    // best-effort cleanup; readiness probe will surface real failures
+  }
   const ep = await waitForEndpoint(endpointFile, child, 5000)
   const client = new RuntimeClient(ep)
   await waitForReady(client, child, 5000)
