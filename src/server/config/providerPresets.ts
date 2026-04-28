@@ -4,7 +4,7 @@
 import { z } from 'zod'
 
 import providerPresetsJson from './providerPresets.json'
-import { ApiFormatSchema } from '../types/provider.js'
+import { ApiFormatSchema, AuthModeSchema } from '../types/provider.js'
 
 const ModelMappingSchema = z.object({
   main: z.string(),
@@ -18,6 +18,7 @@ const ProviderPresetSchema = z.object({
   name: z.string().min(1),
   baseUrl: z.string(),
   apiFormat: ApiFormatSchema,
+  authMode: AuthModeSchema,
   defaultModels: ModelMappingSchema,
   needsApiKey: z.boolean(),
   websiteUrl: z.string(),

@@ -7,6 +7,15 @@
  *
  * Derived from cc-switch (https://github.com/farion1231/cc-switch)
  * Original work by Jason Young, MIT License
+import { randomUUID } from 'crypto'
+import { openaiOAuthService } from '../services/openaiOAuthService.js'
+import {
+  CODEX_BASE_URL,
+  CODEX_HEADER_VALUES,
+  CODEX_HEADERS,
+  CODEX_RESPONSES_PATH,
+} from '../../services/openai-oauth/constants.js'
+
  */
 
 import { ProviderService } from '../services/providerService.js'
@@ -81,6 +90,11 @@ export async function handleProxyRequest(req: Request, url: URL): Promise<Respon
 
   const isStream = body.stream === true
   const baseUrl = config.baseUrl.replace(/\/+$/, '')
+    // ChatGPT ?? OAuth???? codex/responses???? platform.openai.com ??
+    if (config.authMode === 'oauth_chatgpt') {
+      return await handleChatgptOAuth(body, isStream)
+    }
+
 
   try {
     if (config.apiFormat === 'openai_chat') {
@@ -216,3 +230,82 @@ async function handleOpenaiResponses(
   const anthropicResponse = openaiResponsesToAnthropic(responseBody, body.model)
   return Response.json(anthropicResponse)
 }
+
+/**
+ * ChatGPT ?????? OAuth token ?? https://chatgpt.com/backend-api/codex/responses?
+ *
+ * ? platform.openai.com ? /v1/responses ??????????????
+ *  - URL ? /codex/responses
+ *  - ??? OpenAI-Beta: responses=experimental
+ *  - ??? chatgpt-account-id??? access_token JWT ? chatgpt_account_id claim?
+ *  - ??? originator: codex_cli_rs??? originator ????? Codex ??????
+ *  - ??? session_id / conversation_id?uuid??? chatgpt ???????
+ */
+async function handleChatgptOAuth(
+  body: AnthropicRequest,
+  isStream: boolean,
+): Promise<Response> {
+  const tokens = await openaiOAuthService.ensureFreshTokens()
+  if (!tokens) {
+    return Response.json(
+      {
+        type: 'error',
+        error: {
+          type: 'authentication_error',
+          message:
+            'ChatGPT subscription not logged in. Run un run scripts/openai-login.ts or POST /api/openai-oauth/start.',
+        },
+      },
+      { status: 401 },
+    )
+  }
+  if (!tokens.chatgptAccountId) {
+    return Response.json(
+      {
+        type: 'error',
+        error: {
+          type: 'authentication_error',
+          message:
+            'OAuth token missing chatgpt_account_id claim. Re-run login.',
+        },
+      },
+      { status: 401 },
+    )
+  }
+
+  const transformed = anthropicToOpenaiResponses(body)
+
+  const url = ${CODEX_BASE_URL}
+
+  const sessionId = randomUUID()
+  const conversationId = randomUUID()
+
+  const upstream = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: Bearer ,
+      [CODEX_HEADERS.BETA]: CODEX_HEADER_VALUES.BETA_RESPONSES,
+      [CODEX_HEADERS.ACCOUNT_ID]: tokens.chatgptAccountId,
+      [CODEX_HEADERS.ORIGINATOR]: CODEX_HEADER_VALUES.ORIGINATOR,
+      [CODEX_HEADERS.SESSION_ID]: sessionId,
+      [CODEX_HEADERS.CONVERSATION_ID]: conversationId,
+    },
+    body: JSON.stringify(transformed),
+    signal: isStream ? AbortSignal.timeout(30_000) : AbortSignal.timeout(300_000),
+  })
+
+  if (!upstream.ok) {
+    const errText = await upstream.text().catch(() => '')
+    return Response.json(
+      {
+        type: 'error',
+        error: {
+          type: 'api_error',
+          message: ChatGPT upstream HTTP : ,
+        },
+      },
+      { status: upstream.status },
+    )
+  }
+

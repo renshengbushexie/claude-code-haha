@@ -149,6 +149,7 @@ export class ProviderService {
       apiKey: input.apiKey,
       baseUrl: input.baseUrl,
       apiFormat: input.apiFormat ?? 'anthropic',
+      authMode: input.authMode ?? 'apikey',
       models: input.models,
       ...(input.notes !== undefined && { notes: input.notes }),
     }
@@ -170,6 +171,7 @@ export class ProviderService {
       ...(input.apiKey !== undefined && { apiKey: input.apiKey }),
       ...(input.baseUrl !== undefined && { baseUrl: input.baseUrl }),
       ...(input.apiFormat !== undefined && { apiFormat: input.apiFormat }),
+      ...(input.authMode !== undefined && { authMode: input.authMode }),
       ...(input.models !== undefined && { models: input.models }),
       ...(input.notes !== undefined && { notes: input.notes }),
     }
@@ -227,15 +229,26 @@ export class ProviderService {
     provider: SavedProvider,
     options?: { proxyPath?: string },
   ): Record<string, string> {
-    const needsProxy = provider.apiFormat != null && provider.apiFormat !== 'anthropic'
+    // oauth_chatgpt 必须经过本地 proxy（注入 OAuth header + 改写 URL），
+    // 即使将来加上 anthropic 兼容的 ChatGPT endpoint，也不能跳过 proxy。
+    const needsProxy =
+      provider.authMode === 'oauth_chatgpt' ||
+      (provider.apiFormat != null && provider.apiFormat !== 'anthropic')
     const proxyPath = options?.proxyPath ?? '/proxy'
     const baseUrl = needsProxy
       ? `http://127.0.0.1:${ProviderService.serverPort}${proxyPath}`
       : provider.baseUrl
 
+    const apiKeyValue =
+      provider.authMode === 'oauth_chatgpt'
+        ? 'oauth-managed' // proxy 会用 OAuth token 覆盖此值
+        : needsProxy
+          ? 'proxy-managed'
+          : provider.apiKey
+
     return {
       ANTHROPIC_BASE_URL: baseUrl,
-      ANTHROPIC_API_KEY: needsProxy ? 'proxy-managed' : provider.apiKey,
+      ANTHROPIC_API_KEY: apiKeyValue,
       ANTHROPIC_MODEL: provider.models.main,
       ANTHROPIC_DEFAULT_HAIKU_MODEL: provider.models.haiku,
       ANTHROPIC_DEFAULT_SONNET_MODEL: provider.models.sonnet,
@@ -333,6 +346,7 @@ export class ProviderService {
     baseUrl: string
     apiKey: string
     apiFormat: ApiFormat
+    authMode: 'apikey' | 'oauth_chatgpt'
   } | null> {
     if (providerId) {
       const provider = await this.getProvider(providerId)
@@ -340,6 +354,7 @@ export class ProviderService {
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
         apiFormat: provider.apiFormat ?? 'anthropic',
+        authMode: provider.authMode ?? 'apikey',
       }
     }
 
@@ -351,6 +366,7 @@ export class ProviderService {
       baseUrl: provider.baseUrl,
       apiKey: provider.apiKey,
       apiFormat: provider.apiFormat ?? 'anthropic',
+      authMode: provider.authMode ?? 'apikey',
     }
   }
 
@@ -358,6 +374,7 @@ export class ProviderService {
     baseUrl: string
     apiKey: string
     apiFormat: ApiFormat
+    authMode: 'apikey' | 'oauth_chatgpt'
   } | null> {
     return this.getProviderForProxy()
   }

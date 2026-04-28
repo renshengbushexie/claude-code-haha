@@ -9,6 +9,7 @@
   "scripts": {
     "claude-haha": "bun run ./bin/claude-haha",
     "start": "bun run ./bin/claude-haha",
+    "openai-login": "bun run ./scripts/openai-login.ts",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"

@@ -18,6 +18,7 @@ import { handlePluginsApi } from './api/plugins.js'
 import { handleSkillsApi } from './api/skills.js'
 import { handleComputerUseApi } from './api/computer-use.js'
 import { handleHahaOAuthApi } from './api/haha-oauth.js'
+import { handleOpenAIOAuthApi } from './api/openai-oauth.js'
 import { handleMcpApi } from './api/mcp.js'
 
 export async function handleApiRequest(req: Request, url: URL): Promise<Response> {
@@ -71,6 +72,9 @@ export async function handleApiRequest(req: Request, url: URL): Promise<Response
 
     case 'haha-oauth':
       return handleHahaOAuthApi(req, url, segments)
+
+    case 'openai-oauth':
+      return handleOpenAIOAuthApi(req, url, segments)
 
     case 'adapters':
       return handleAdaptersApi(req, url, segments)

@@ -14,6 +14,18 @@ export const ApiFormatSchema = z.enum([
 ])
 export type ApiFormat = z.infer<typeof ApiFormatSchema>
 
+/**
+ * 鉴权模式：
+ * - 'apikey'        : 走 ANTHROPIC_AUTH_TOKEN / x-api-key（默认行为）
+ * - 'oauth_chatgpt' : 使用 ChatGPT 订阅 OAuth token；apiKey 字段可空，
+ *                     proxy handler 会按需从 OpenAIOAuthService 获取最新 token
+ *                     并改写 upstream 到 https://chatgpt.com/backend-api/codex/responses
+ */
+export const AuthModeSchema = z
+  .enum(['apikey', 'oauth_chatgpt'])
+  .default('apikey')
+export type AuthMode = z.infer<typeof AuthModeSchema>
+
 export const ModelMappingSchema = z.object({
   main: z.string(),
   haiku: z.string(),
@@ -25,9 +37,11 @@ export const SavedProviderSchema = z.object({
   id: z.string(),
   presetId: z.string(),
   name: z.string().min(1),
+  // oauth_chatgpt 模式下 apiKey 不参与请求签名（保持非空字符串以兼容老逻辑/UI 占位）
   apiKey: z.string(),
   baseUrl: z.string(),
   apiFormat: ApiFormatSchema.default('anthropic'),
+  authMode: AuthModeSchema,
   models: ModelMappingSchema,
   notes: z.string().optional(),
 })
@@ -43,6 +57,7 @@ export const CreateProviderSchema = z.object({
   apiKey: z.string(),
   baseUrl: z.string(),
   apiFormat: ApiFormatSchema.default('anthropic'),
+  authMode: AuthModeSchema,
   models: ModelMappingSchema,
   notes: z.string().optional(),
 })
@@ -52,6 +67,7 @@ export const UpdateProviderSchema = z.object({
   apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
   apiFormat: ApiFormatSchema.optional(),
+  authMode: AuthModeSchema.optional(),
   models: ModelMappingSchema.optional(),
   notes: z.string().optional(),
 })

@@ -2,6 +2,7 @@
   {
     "id": "official",
     "name": "Claude Official",
+    "authMode": "apikey",
     "baseUrl": "",
     "apiFormat": "anthropic",
     "defaultModels": {
@@ -11,6 +12,18 @@
       "opus": ""
     },
     "needsApiKey": false,
+  {
+    "id": "chatgpt",
+    "name": "ChatGPT (Subscription)",
+    "baseUrl": "https://chatgpt.com/backend-api",
+    "apiFormat": "openai_responses",
+    "authMode": "oauth_chatgpt",
+    "defaultModels": {
+      "main": "gpt-5-codex",
+      "haiku": "gpt-5-codex",
+      "sonnet": "gpt-5-codex",
+      "opus": "gpt-5-codex"
+    },
     "websiteUrl": "https://www.anthropic.com/claude-code"
   },
   {
@@ -29,6 +42,7 @@
   },
   {
     "id": "zhipuglm",
+    "authMode": "apikey",
     "name": "Zhipu GLM",
     "baseUrl": "https://open.bigmodel.cn/api/anthropic",
     "apiFormat": "anthropic",
@@ -43,6 +57,7 @@
   },
   {
     "id": "kimi",
+    "authMode": "apikey",
     "name": "Kimi",
     "baseUrl": "https://api.moonshot.cn/anthropic",
     "apiFormat": "anthropic",
@@ -57,6 +72,7 @@
   },
   {
     "id": "minimax",
+    "authMode": "apikey",
     "name": "MiniMax",
     "baseUrl": "https://api.minimaxi.com/anthropic",
     "apiFormat": "anthropic",
@@ -71,6 +87,7 @@
   },
   {
     "id": "custom",
+    "authMode": "apikey",
     "name": "Custom",
     "baseUrl": "",
     "apiFormat": "anthropic",
