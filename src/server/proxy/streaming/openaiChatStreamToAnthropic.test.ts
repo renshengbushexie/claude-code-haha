@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 import { openaiChatStreamToAnthropic } from './openaiChatStreamToAnthropic'
 
+type AnthropicSseEvent = {
+  event: string
+  data: Record<string, unknown>
+}
+
 // Build a single OpenAI Chat Completions chunk with the given delta and optional finish_reason.
 function chunk(delta: Record<string, unknown>, finishReason: string | null = null): string {
   const obj = {
@@ -24,8 +29,11 @@ function makeUpstream(segments: string[]): ReadableStream<Uint8Array> {
   })
 }
 
-// Read converted stream fully and split into Anthropic SSE event names (in order).
-async function collectEvents(stream: ReadableStream<Uint8Array>): Promise<string[]> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+async function readStream(stream: ReadableStream<Uint8Array>): Promise<string> {
   const reader = stream.getReader()
   const decoder = new TextDecoder()
   let buf = ''
@@ -34,12 +42,67 @@ async function collectEvents(stream: ReadableStream<Uint8Array>): Promise<string
     if (done) break
     buf += decoder.decode(value, { stream: true })
   }
-  const events: string[] = []
-  for (const line of buf.split('\n')) {
-    const m = line.match(/^event:\s*(\S+)/)
-    if (m) events.push(m[1]!)
+  return buf
+}
+
+async function collectSseEvents(stream: ReadableStream<Uint8Array>): Promise<AnthropicSseEvent[]> {
+  const buf = await readStream(stream)
+  const events: AnthropicSseEvent[] = []
+
+  for (const rawEvent of buf.split('\n\n')) {
+    if (!rawEvent.trim()) continue
+    const lines = rawEvent.split('\n')
+    const eventLine = lines.find((line) => line.startsWith('event: '))
+    const dataLine = lines.find((line) => line.startsWith('data: '))
+    if (!eventLine || !dataLine) continue
+
+    const event = eventLine.slice(7)
+    const parsed: unknown = JSON.parse(dataLine.slice(6))
+    if (isRecord(parsed)) {
+      events.push({ event, data: parsed })
+    }
   }
+
   return events
+}
+
+// Read converted stream fully and split into Anthropic SSE event names (in order).
+async function collectEvents(stream: ReadableStream<Uint8Array>): Promise<string[]> {
+  const events = await collectSseEvents(stream)
+  return events.map((event) => event.event)
+}
+
+function thinkingDeltas(events: AnthropicSseEvent[]): string[] {
+  const result: string[] = []
+  for (const event of events) {
+    if (event.event !== 'content_block_delta') continue
+    const delta = event.data.delta
+    if (!isRecord(delta) || delta.type !== 'thinking_delta') continue
+    if (typeof delta.thinking === 'string') result.push(delta.thinking)
+  }
+  return result
+}
+
+function textDeltas(events: AnthropicSseEvent[]): string[] {
+  const result: string[] = []
+  for (const event of events) {
+    if (event.event !== 'content_block_delta') continue
+    const delta = event.data.delta
+    if (!isRecord(delta) || delta.type !== 'text_delta') continue
+    if (typeof delta.text === 'string') result.push(delta.text)
+  }
+  return result
+}
+
+function contentBlockStartTypes(events: AnthropicSseEvent[]): string[] {
+  const result: string[] = []
+  for (const event of events) {
+    if (event.event !== 'content_block_start') continue
+    const contentBlock = event.data.content_block
+    if (!isRecord(contentBlock)) continue
+    if (typeof contentBlock.type === 'string') result.push(contentBlock.type)
+  }
+  return result
 }
 
 describe('openaiChatStreamToAnthropic — [DONE] terminator variants (regression for #204)', () => {
@@ -101,5 +164,37 @@ describe('openaiChatStreamToAnthropic — [DONE] terminator variants (regression
     expect(events).toContain('message_start')
     expect(events).toContain('content_block_start')
     expect(events).toContain('message_stop')
+  })
+})
+
+describe('openaiChatStreamToAnthropic — reasoning/thinking loop prevention (regression for #74)', () => {
+  it('deduplicates cumulative reasoning_content snapshots before emitting thinking_delta', async () => {
+    const upstream = makeUpstream([
+      chunk({ reasoning_content: 'first' }),
+      chunk({ reasoning_content: 'first second' }),
+      chunk({ reasoning_content: 'first second third' }),
+      chunk({ content: 'done' }, 'stop'),
+      'data: [DONE]\n\n',
+    ])
+
+    const events = await collectSseEvents(openaiChatStreamToAnthropic(upstream, 'm'))
+
+    expect(thinkingDeltas(events).join('')).toBe('first second third')
+  })
+
+  it('does not reopen thinking after answer text has started', async () => {
+    const upstream = makeUpstream([
+      chunk({ reasoning_content: 'plan' }),
+      chunk({ content: 'answer ' }),
+      chunk({ reasoning_content: 'late provider reasoning' }),
+      chunk({ content: 'done' }, 'stop'),
+      'data: [DONE]\n\n',
+    ])
+
+    const events = await collectSseEvents(openaiChatStreamToAnthropic(upstream, 'm'))
+
+    expect(contentBlockStartTypes(events).filter((type) => type === 'thinking')).toEqual(['thinking'])
+    expect(thinkingDeltas(events)).toEqual(['plan'])
+    expect(textDeltas(events).join('')).toBe('answer done')
   })
 })

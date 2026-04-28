@@ -50,6 +50,12 @@ type StreamState = {
   // Tool call tracking
   toolBlocks: Map<number, ToolBlockState>
 
+  // Thinking/reasoning normalization. Some OpenAI-compatible providers stream
+  // cumulative reasoning snapshots instead of true token deltas, and some send
+  // late reasoning after answer text has already started (#74).
+  thinkingText: string
+  textStarted: boolean
+
   // Message lifecycle
   model: string
   messageStartSent: boolean
@@ -76,6 +82,8 @@ function createState(model: string): StreamState {
     blockStartSent: false,
     blockStopSent: false,
     toolBlocks: new Map(),
+    thinkingText: '',
+    textStarted: false,
     model,
     messageStartSent: false,
     messageDeltaSent: false,
@@ -304,6 +312,26 @@ function extractReasoning(delta: DeltaEx): { thinking: string; signature: string
   return null
 }
 
+function normalizeThinkingDelta(state: StreamState, incoming: string): string {
+  if (!incoming) return ''
+
+  const previous = state.thinkingText
+  if (!previous) return incoming
+
+  // Some providers send cumulative snapshots:
+  //   "step 1" → "step 1 step 2" → "step 1 step 2 step 3"
+  // Anthropic expects deltas, so emit only the suffix not seen before.
+  if (incoming.startsWith(previous) && incoming.length > previous.length) {
+    return incoming.slice(previous.length)
+  }
+
+  // A final provider snapshot may exactly repeat the full chain. Keep a small
+  // threshold so legitimate repeated short tokens are not accidentally dropped.
+  if (incoming === previous && incoming.length > 8) return ''
+
+  return incoming
+}
+
 /**
  * Determine what block type this chunk carries and whether it's a new block.
  * Priority (matches LiteLLM): tool_calls > text > reasoning > ignore
@@ -329,6 +357,11 @@ function detectBlockTransition(
   // Priority 3: Reasoning/thinking
   const reasoning = extractReasoning(delta)
   if (reasoning) {
+    // Once answer text starts, reopening a thinking block makes Feishu/Lark
+    // repeatedly clear and redraw the thinking area. Providers that send late
+    // reasoning after content are violating Anthropic's thinking-before-text
+    // ordering, so prefer stable user-visible output over surfacing stale traces.
+    if (state.textStarted) return null
     const isNew = state.currentBlockType !== 'thinking' || !state.blockStartSent
     return { type: 'thinking', isNew }
   }
@@ -400,10 +433,12 @@ function handleThinking(delta: DeltaEx, state: StreamState): void {
     openBlock(state, 'thinking', { type: 'thinking', thinking: '' })
   }
 
-  if (reasoning.thinking) {
+  const thinkingDelta = normalizeThinkingDelta(state, reasoning.thinking)
+  if (thinkingDelta) {
     emitDelta(state, state.currentBlockIndex, {
-      type: 'thinking_delta', thinking: reasoning.thinking,
+      type: 'thinking_delta', thinking: thinkingDelta,
     })
+    state.thinkingText += thinkingDelta
   }
   if (reasoning.signature) {
     emitDelta(state, state.currentBlockIndex, {
@@ -414,6 +449,8 @@ function handleThinking(delta: DeltaEx, state: StreamState): void {
 
 function handleText(delta: DeltaEx, state: StreamState): void {
   if (delta.content == null || delta.content === '') return
+
+  state.textStarted = true
 
   if (state.currentBlockType !== 'text' || !state.blockStartSent) {
     openBlock(state, 'text', { type: 'text', text: '' })
