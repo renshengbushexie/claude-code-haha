@@ -2,9 +2,9 @@
   {
     "id": "official",
     "name": "Claude Official",
-    "authMode": "apikey",
     "baseUrl": "",
     "apiFormat": "anthropic",
+    "authMode": "apikey",
     "defaultModels": {
       "main": "",
       "haiku": "",
@@ -12,6 +12,8 @@
       "opus": ""
     },
     "needsApiKey": false,
+    "websiteUrl": "https://www.anthropic.com/claude-code"
+  },
   {
     "id": "chatgpt",
     "name": "ChatGPT (Subscription)",
@@ -19,18 +21,38 @@
     "apiFormat": "openai_responses",
     "authMode": "oauth_chatgpt",
     "defaultModels": {
-      "main": "gpt-5-codex",
-      "haiku": "gpt-5-codex",
-      "sonnet": "gpt-5-codex",
-      "opus": "gpt-5-codex"
+      "main": "gpt-5.5",
+      "haiku": "gpt-5.5",
+      "sonnet": "gpt-5.5",
+      "opus": "gpt-5.5"
     },
-    "websiteUrl": "https://www.anthropic.com/claude-code"
+    "availableModels": [
+      { "id": "gpt-5-codex", "label": "GPT-5 Codex", "apiModel": "gpt-5-codex" },
+      { "id": "gpt-5", "label": "GPT-5", "apiModel": "gpt-5" },
+      { "id": "gpt-5-fast", "label": "GPT-5 Fast", "apiModel": "gpt-5", "requestOverrides": { "reasoning": { "effort": "low" } } },
+      { "id": "gpt-5-mini", "label": "GPT-5 mini", "apiModel": "gpt-5-mini" },
+      { "id": "gpt-5-mini-fast", "label": "GPT-5 mini Fast", "apiModel": "gpt-5-mini", "requestOverrides": { "reasoning": { "effort": "low" } } },
+      { "id": "gpt-5.1", "label": "GPT-5.1", "apiModel": "gpt-5.1" },
+      { "id": "gpt-5.1-fast", "label": "GPT-5.1 Fast", "apiModel": "gpt-5.1", "requestOverrides": { "reasoning": { "effort": "low" } } },
+      { "id": "gpt-5.1-codex", "label": "GPT-5.1 Codex", "apiModel": "gpt-5.1-codex" },
+      { "id": "gpt-5.1-codex-fast", "label": "GPT-5.1 Codex Fast", "apiModel": "gpt-5.1-codex", "requestOverrides": { "reasoning": { "effort": "low" } } },
+      { "id": "gpt-5.1-codex-mini", "label": "GPT-5.1 Codex Mini", "apiModel": "gpt-5.1-codex-mini" },
+      { "id": "gpt-5.4", "label": "GPT-5.4", "apiModel": "gpt-5.4" },
+      { "id": "gpt-5.4-fast", "label": "GPT-5.4 Fast", "apiModel": "gpt-5.4", "requestOverrides": { "reasoning": { "effort": "low" } } },
+      { "id": "gpt-5.4-mini", "label": "GPT-5.4 mini", "apiModel": "gpt-5.4-mini" },
+      { "id": "gpt-5.4-mini-fast", "label": "GPT-5.4 mini Fast", "apiModel": "gpt-5.4-mini", "requestOverrides": { "reasoning": { "effort": "low" } } },
+      { "id": "gpt-5.5", "label": "GPT-5.5", "apiModel": "gpt-5.5" },
+      { "id": "gpt-5.5-fast", "label": "GPT-5.5 Fast", "apiModel": "gpt-5.5", "requestOverrides": { "reasoning": { "effort": "low" } } }
+    ],
+    "needsApiKey": false,
+    "websiteUrl": "https://chatgpt.com"
   },
   {
     "id": "deepseek",
     "name": "DeepSeek",
     "baseUrl": "https://api.deepseek.com/anthropic",
     "apiFormat": "anthropic",
+    "authMode": "apikey",
     "defaultModels": {
       "main": "deepseek-chat",
       "haiku": "deepseek-chat",
@@ -42,10 +64,10 @@
   },
   {
     "id": "zhipuglm",
-    "authMode": "apikey",
     "name": "Zhipu GLM",
     "baseUrl": "https://open.bigmodel.cn/api/anthropic",
     "apiFormat": "anthropic",
+    "authMode": "apikey",
     "defaultModels": {
       "main": "glm-5.1",
       "haiku": "glm-4.5-air",
@@ -57,10 +79,10 @@
   },
   {
     "id": "kimi",
-    "authMode": "apikey",
     "name": "Kimi",
     "baseUrl": "https://api.moonshot.cn/anthropic",
     "apiFormat": "anthropic",
+    "authMode": "apikey",
     "defaultModels": {
       "main": "kimi-k2.6",
       "haiku": "kimi-k2.6",
@@ -72,10 +94,10 @@
   },
   {
     "id": "minimax",
-    "authMode": "apikey",
     "name": "MiniMax",
     "baseUrl": "https://api.minimaxi.com/anthropic",
     "apiFormat": "anthropic",
+    "authMode": "apikey",
     "defaultModels": {
       "main": "MiniMax-M2.7",
       "haiku": "MiniMax-M2.7",
@@ -87,10 +109,10 @@
   },
   {
     "id": "custom",
-    "authMode": "apikey",
     "name": "Custom",
     "baseUrl": "",
     "apiFormat": "anthropic",
+    "authMode": "apikey",
     "defaultModels": {
       "main": "",
       "haiku": "",

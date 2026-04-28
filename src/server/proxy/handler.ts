@@ -7,7 +7,10 @@
  *
  * Derived from cc-switch (https://github.com/farion1231/cc-switch)
  * Original work by Jason Young, MIT License
+ */
+
 import { randomUUID } from 'crypto'
+import { ProviderService } from '../services/providerService.js'
 import { openaiOAuthService } from '../services/openaiOAuthService.js'
 import {
   CODEX_BASE_URL,
@@ -15,10 +18,6 @@ import {
   CODEX_HEADERS,
   CODEX_RESPONSES_PATH,
 } from '../../services/openai-oauth/constants.js'
-
- */
-
-import { ProviderService } from '../services/providerService.js'
 import { anthropicToOpenaiChat } from './transform/anthropicToOpenaiChat.js'
 import { anthropicToOpenaiResponses } from './transform/anthropicToOpenaiResponses.js'
 import { openaiChatToAnthropic } from './transform/openaiChatToAnthropic.js'
@@ -26,8 +25,42 @@ import { openaiResponsesToAnthropic } from './transform/openaiResponsesToAnthrop
 import { openaiChatStreamToAnthropic } from './streaming/openaiChatStreamToAnthropic.js'
 import { openaiResponsesStreamToAnthropic } from './streaming/openaiResponsesStreamToAnthropic.js'
 import type { AnthropicRequest } from './transform/types.js'
+import { PROVIDER_PRESETS, type AvailableModel } from '../config/providerPresets.js'
 
 const providerService = new ProviderService()
+
+/**
+ * Look up a Fast/variant model entry in the ChatGPT preset's availableModels.
+ * Returns `null` when the model id is not a curated entry (user-defined custom
+ * id) — caller should leave the request unmodified in that case.
+ */
+function findChatgptAvailableModel(modelId: string): AvailableModel | null {
+  const preset = PROVIDER_PRESETS.find((p) => p.id === 'chatgpt')
+  if (!preset?.availableModels) return null
+  return preset.availableModels.find((m) => m.id === modelId) ?? null
+}
+
+/**
+ * Recursively merge `overrides` into `target`. Plain-object values are merged;
+ * everything else (primitives, arrays, null) replaces wholesale. Used so a Fast
+ * variant's `{ reasoning: { effort: 'low' } }` does not blow away unrelated keys
+ * the upstream transform may have set on `transformed.reasoning`.
+ */
+function deepMergeOverrides(
+  target: Record<string, unknown>,
+  overrides: Record<string, unknown>,
+): void {
+  for (const [key, value] of Object.entries(overrides)) {
+    const existing = target[key]
+    const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+      typeof v === 'object' && v !== null && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype
+    if (isPlainObject(existing) && isPlainObject(value)) {
+      deepMergeOverrides(existing, value)
+    } else {
+      target[key] = value
+    }
+  }
+}
 
 export async function handleProxyRequest(req: Request, url: URL): Promise<Response> {
   const providerMatch = url.pathname.match(/^\/proxy\/providers\/([^/]+)\/v1\/messages$/)
@@ -90,13 +123,12 @@ export async function handleProxyRequest(req: Request, url: URL): Promise<Respon
 
   const isStream = body.stream === true
   const baseUrl = config.baseUrl.replace(/\/+$/, '')
-    // ChatGPT ?? OAuth???? codex/responses???? platform.openai.com ??
+
+  try {
+    // ChatGPT 订阅 OAuth：单独走 codex/responses，不复用 platform.openai.com 路径
     if (config.authMode === 'oauth_chatgpt') {
       return await handleChatgptOAuth(body, isStream)
     }
-
-
-  try {
     if (config.apiFormat === 'openai_chat') {
       return await handleOpenaiChat(body, baseUrl, config.apiKey, isStream)
     } else {
@@ -232,14 +264,14 @@ async function handleOpenaiResponses(
 }
 
 /**
- * ChatGPT ?????? OAuth token ?? https://chatgpt.com/backend-api/codex/responses?
+ * ChatGPT 订阅模式：用 OAuth token 调用 https://chatgpt.com/backend-api/codex/responses。
  *
- * ? platform.openai.com ? /v1/responses ??????????????
- *  - URL ? /codex/responses
- *  - ??? OpenAI-Beta: responses=experimental
- *  - ??? chatgpt-account-id??? access_token JWT ? chatgpt_account_id claim?
- *  - ??? originator: codex_cli_rs??? originator ????? Codex ??????
- *  - ??? session_id / conversation_id?uuid??? chatgpt ???????
+ * 与 platform.openai.com 的 /v1/responses 协议结构基本一致，差别在于：
+ *  - URL 是 /codex/responses
+ *  - 必须带 OpenAI-Beta: responses=experimental
+ *  - 必须带 chatgpt-account-id（来自 access_token JWT 的 chatgpt_account_id claim）
+ *  - 必须带 originator: codex_cli_rs（通过 originator 鉴别为合法 Codex 客户端调用）
+ *  - 推荐带 session_id / conversation_id（uuid，用于 chatgpt 端的会话归集）
  */
 async function handleChatgptOAuth(
   body: AnthropicRequest,
@@ -253,7 +285,7 @@ async function handleChatgptOAuth(
         error: {
           type: 'authentication_error',
           message:
-            'ChatGPT subscription not logged in. Run un run scripts/openai-login.ts or POST /api/openai-oauth/start.',
+            'ChatGPT subscription not logged in. Run `bun run scripts/openai-login.ts` or POST /api/openai-oauth/start.',
         },
       },
       { status: 401 },
@@ -275,7 +307,25 @@ async function handleChatgptOAuth(
 
   const transformed = anthropicToOpenaiResponses(body)
 
-  const url = ${CODEX_BASE_URL}
+  // Apply ChatGPT preset variant rewriting: when body.model matches a curated
+  // availableModels entry whose `apiModel` differs from `id` (e.g. the "Fast"
+  // variants share the base wire model id), rewrite the wire `model` and merge
+  // any per-variant requestOverrides (e.g. `reasoning.effort=low` for Fast).
+  // See providerPresets.json -> chatgpt.availableModels.
+  const variantEntry = findChatgptAvailableModel(body.model)
+  if (variantEntry) {
+    if (variantEntry.apiModel !== variantEntry.id) {
+      transformed.model = variantEntry.apiModel
+    }
+    if (variantEntry.requestOverrides) {
+      deepMergeOverrides(
+        transformed as unknown as Record<string, unknown>,
+        variantEntry.requestOverrides,
+      )
+    }
+  }
+
+  const url = `${CODEX_BASE_URL}${CODEX_RESPONSES_PATH}`
 
   const sessionId = randomUUID()
   const conversationId = randomUUID()
@@ -284,7 +334,7 @@ async function handleChatgptOAuth(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: Bearer ,
+      Authorization: `Bearer ${tokens.accessToken}`,
       [CODEX_HEADERS.BETA]: CODEX_HEADER_VALUES.BETA_RESPONSES,
       [CODEX_HEADERS.ACCOUNT_ID]: tokens.chatgptAccountId,
       [CODEX_HEADERS.ORIGINATOR]: CODEX_HEADER_VALUES.ORIGINATOR,
@@ -302,10 +352,32 @@ async function handleChatgptOAuth(
         type: 'error',
         error: {
           type: 'api_error',
-          message: ChatGPT upstream HTTP : ,
+          message: `ChatGPT upstream HTTP ${upstream.status}: ${errText.slice(0, 500)}`,
         },
       },
       { status: upstream.status },
     )
   }
 
+  if (isStream) {
+    if (!upstream.body) {
+      return Response.json(
+        { type: 'error', error: { type: 'api_error', message: 'ChatGPT upstream returned no body for stream' } },
+        { status: 502 },
+      )
+    }
+    const anthropicStream = openaiResponsesStreamToAnthropic(upstream.body, body.model)
+    return new Response(anthropicStream, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    })
+  }
+
+  const responseBody = await upstream.json()
+  const anthropicResponse = openaiResponsesToAnthropic(responseBody, body.model)
+  return Response.json(anthropicResponse)
+}

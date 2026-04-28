@@ -579,10 +579,81 @@ function ProviderFormModal({ open, onClose, mode, provider, presets }: ProviderF
         <div>
           <label className="text-sm font-medium text-[var(--color-text-primary)] mb-2 block">{t('settings.providers.modelMapping')}</label>
           <div className="grid grid-cols-2 gap-2">
-            <Input label={t('settings.providers.mainModel')} required value={models.main} onChange={(e) => setModels({ ...models, main: e.target.value })} placeholder="Model ID" />
-            <Input label={t('settings.providers.haikuModel')} value={models.haiku} onChange={(e) => setModels({ ...models, haiku: e.target.value })} placeholder={t('settings.providers.sameAsMain')} />
-            <Input label={t('settings.providers.sonnetModel')} value={models.sonnet} onChange={(e) => setModels({ ...models, sonnet: e.target.value })} placeholder={t('settings.providers.sameAsMain')} />
-            <Input label={t('settings.providers.opusModel')} value={models.opus} onChange={(e) => setModels({ ...models, opus: e.target.value })} placeholder={t('settings.providers.sameAsMain')} />
+            {selectedPreset.availableModels ? (
+              <>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-[var(--color-text-primary)]">{t('settings.providers.mainModel')}<span className="text-[var(--color-error)] ml-0.5">*</span></label>
+                  <select
+                    value={models.main}
+                    onChange={(e) => setModels({ ...models, main: e.target.value })}
+                    className="h-10 px-3 rounded-[var(--radius-md)] border text-sm bg-[var(--color-surface)] text-[var(--color-text-primary)] transition-colors duration-150 border-[var(--color-border)] focus:border-[var(--color-border-focus)] focus:shadow-[var(--shadow-focus-ring)] outline-none"
+                  >
+                    {!models.main && <option value="" disabled>Model ID</option>}
+                    {models.main && !selectedPreset.availableModels.some(m => m.id === models.main) && (
+                      <option value={models.main}>{models.main} (custom)</option>
+                    )}
+                    {selectedPreset.availableModels.map(m => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-[var(--color-text-primary)]">{t('settings.providers.haikuModel')}</label>
+                  <select
+                    value={models.haiku}
+                    onChange={(e) => setModels({ ...models, haiku: e.target.value })}
+                    className="h-10 px-3 rounded-[var(--radius-md)] border text-sm bg-[var(--color-surface)] text-[var(--color-text-primary)] transition-colors duration-150 border-[var(--color-border)] focus:border-[var(--color-border-focus)] focus:shadow-[var(--shadow-focus-ring)] outline-none"
+                  >
+                    {!models.haiku && <option value="" disabled>{t('settings.providers.sameAsMain')}</option>}
+                    {models.haiku && !selectedPreset.availableModels.some(m => m.id === models.haiku) && (
+                      <option value={models.haiku}>{models.haiku} (custom)</option>
+                    )}
+                    {selectedPreset.availableModels.map(m => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-[var(--color-text-primary)]">{t('settings.providers.sonnetModel')}</label>
+                  <select
+                    value={models.sonnet}
+                    onChange={(e) => setModels({ ...models, sonnet: e.target.value })}
+                    className="h-10 px-3 rounded-[var(--radius-md)] border text-sm bg-[var(--color-surface)] text-[var(--color-text-primary)] transition-colors duration-150 border-[var(--color-border)] focus:border-[var(--color-border-focus)] focus:shadow-[var(--shadow-focus-ring)] outline-none"
+                  >
+                    {!models.sonnet && <option value="" disabled>{t('settings.providers.sameAsMain')}</option>}
+                    {models.sonnet && !selectedPreset.availableModels.some(m => m.id === models.sonnet) && (
+                      <option value={models.sonnet}>{models.sonnet} (custom)</option>
+                    )}
+                    {selectedPreset.availableModels.map(m => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-[var(--color-text-primary)]">{t('settings.providers.opusModel')}</label>
+                  <select
+                    value={models.opus}
+                    onChange={(e) => setModels({ ...models, opus: e.target.value })}
+                    className="h-10 px-3 rounded-[var(--radius-md)] border text-sm bg-[var(--color-surface)] text-[var(--color-text-primary)] transition-colors duration-150 border-[var(--color-border)] focus:border-[var(--color-border-focus)] focus:shadow-[var(--shadow-focus-ring)] outline-none"
+                  >
+                    {!models.opus && <option value="" disabled>{t('settings.providers.sameAsMain')}</option>}
+                    {models.opus && !selectedPreset.availableModels.some(m => m.id === models.opus) && (
+                      <option value={models.opus}>{models.opus} (custom)</option>
+                    )}
+                    {selectedPreset.availableModels.map(m => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            ) : (
+              <>
+                <Input label={t('settings.providers.mainModel')} required value={models.main} onChange={(e) => setModels({ ...models, main: e.target.value })} placeholder="Model ID" />
+                <Input label={t('settings.providers.haikuModel')} value={models.haiku} onChange={(e) => setModels({ ...models, haiku: e.target.value })} placeholder={t('settings.providers.sameAsMain')} />
+                <Input label={t('settings.providers.sonnetModel')} value={models.sonnet} onChange={(e) => setModels({ ...models, sonnet: e.target.value })} placeholder={t('settings.providers.sameAsMain')} />
+                <Input label={t('settings.providers.opusModel')} value={models.opus} onChange={(e) => setModels({ ...models, opus: e.target.value })} placeholder={t('settings.providers.sameAsMain')} />
+              </>
+            )}
           </div>
         </div>
 
