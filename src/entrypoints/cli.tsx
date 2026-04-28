@@ -1,4 +1,8 @@
-import { feature } from 'bun:bundle';
+// External-build stub for Anthropic's internal `bun:bundle` virtual module.
+// The original `feature()` is a build-time DCE gate that is always false in
+// non-Anthropic builds, so an inline `() => false` preserves runtime behavior
+// while removing the unresolvable `bun:bundle` import (issue #15).
+const feature = (_name: string): boolean => false;
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
