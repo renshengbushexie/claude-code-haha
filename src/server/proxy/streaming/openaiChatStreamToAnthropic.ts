@@ -464,9 +464,14 @@ function handleFinishReason(
   closeAllOpenBlocks(state)
 
   const stopReason = mapFinishReason(finishReason)
+  // CC client destructures usage.input_tokens; always emit both fields with safe
+  // defaults so providers that omit usage (Ollama / LMStudio / custom) don't crash it. (#26)
   const usage = chunk.usage
-    ? { output_tokens: chunk.usage.completion_tokens || 0 }
-    : { output_tokens: 0 }
+    ? {
+        input_tokens: chunk.usage.prompt_tokens ?? 0,
+        output_tokens: chunk.usage.completion_tokens ?? 0,
+      }
+    : { input_tokens: 0, output_tokens: 0 }
 
   const messageDelta: SseEvent = {
     event: 'message_delta',
@@ -494,7 +499,10 @@ function mergeUsageIntoHeldDelta(
   if (!state.heldMessageDelta) return
 
   const data = state.heldMessageDelta.data as Record<string, unknown>
-  data.usage = { output_tokens: usage.completion_tokens || 0 }
+  data.usage = {
+    input_tokens: usage.prompt_tokens ?? 0,
+    output_tokens: usage.completion_tokens ?? 0,
+  }
   state.messageDeltaSent = true
   state.queue.push(state.heldMessageDelta)
   state.heldMessageDelta = null
@@ -522,7 +530,7 @@ function finalizeStream(state: StreamState): void {
     enqueue(state, 'message_delta', {
       type: 'message_delta',
       delta: { stop_reason: 'end_turn', stop_sequence: null },
-      usage: { output_tokens: 0 },
+      usage: { input_tokens: 0, output_tokens: 0 },
     })
   }
 

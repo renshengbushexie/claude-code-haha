@@ -314,4 +314,83 @@ describe('openaiResponsesStreamToAnthropic', () => {
     const msgDelta = events.find((e) => e.event === 'message_delta')!
     expect((msgDelta.data.delta as Record<string, unknown>).stop_reason).toBe('tool_use')
   })
+
+  // Regression: usage.input_tokens must always be present in message_delta so the
+  // Claude Code client can destructure it without crashing. (#26)
+  test('message_delta always carries usage.input_tokens (forwarded from upstream)', async () => {
+    const sseChunks = [
+      'event: response.created\ndata: {"id":"r3","model":"gpt-4o","status":"in_progress"}\n\n',
+      'event: response.output_item.added\ndata: {"output_index":0,"item":{"type":"message","role":"assistant"}}\n\n',
+      'event: response.content_part.added\ndata: {"output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}\n\n',
+      'event: response.output_text.delta\ndata: {"output_index":0,"content_index":0,"delta":"hi"}\n\n',
+      'event: response.output_text.done\ndata: {"output_index":0,"content_index":0,"text":"hi"}\n\n',
+      'event: response.completed\ndata: {"response":{"id":"r3","model":"gpt-4o","status":"completed","usage":{"input_tokens":42,"output_tokens":7}}}\n\n',
+    ]
+    const events = await collectSse(openaiResponsesStreamToAnthropic(makeStream(sseChunks), 'gpt-4o'))
+    const msgDelta = events.find((e) => e.event === 'message_delta')!
+    const usage = msgDelta.data.usage as Record<string, number>
+    expect(usage.input_tokens).toBe(42)
+    expect(usage.output_tokens).toBe(7)
+  })
+
+  test('message_delta defaults usage.input_tokens to 0 when upstream omits usage', async () => {
+    const sseChunks = [
+      'event: response.created\ndata: {"id":"r4","model":"gpt-4o","status":"in_progress"}\n\n',
+      'event: response.output_item.added\ndata: {"output_index":0,"item":{"type":"message","role":"assistant"}}\n\n',
+      'event: response.content_part.added\ndata: {"output_index":0,"content_index":0,"part":{"type":"output_text","text":""}}\n\n',
+      'event: response.output_text.delta\ndata: {"output_index":0,"content_index":0,"delta":"x"}\n\n',
+      'event: response.output_text.done\ndata: {"output_index":0,"content_index":0,"text":"x"}\n\n',
+      'event: response.completed\ndata: {"response":{"id":"r4","model":"gpt-4o","status":"completed"}}\n\n',
+    ]
+    const events = await collectSse(openaiResponsesStreamToAnthropic(makeStream(sseChunks), 'gpt-4o'))
+    const msgDelta = events.find((e) => e.event === 'message_delta')!
+    const usage = msgDelta.data.usage as Record<string, number>
+    expect(usage.input_tokens).toBe(0)
+    expect(usage.output_tokens).toBe(0)
+  })
+})
+
+// ─── Regression: usage.input_tokens defaults (#26) ─────────────
+
+describe('openaiChatStreamToAnthropic — usage.input_tokens defaults (#26)', () => {
+  test('forwards prompt_tokens as input_tokens when upstream provides usage', async () => {
+    const sseChunks = [
+      'data: {"id":"u1","object":"chat.completion.chunk","created":0,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant","content":"hi"},"finish_reason":null}]}\n\n',
+      'data: {"id":"u1","object":"chat.completion.chunk","created":0,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":17,"completion_tokens":3,"total_tokens":20}}\n\n',
+      'data: [DONE]\n\n',
+    ]
+    const events = await collectSse(openaiChatStreamToAnthropic(makeStream(sseChunks), 'gpt-4'))
+    const msgDelta = events.find((e) => e.event === 'message_delta')!
+    const usage = msgDelta.data.usage as Record<string, number>
+    expect(usage.input_tokens).toBe(17)
+    expect(usage.output_tokens).toBe(3)
+  })
+
+  test('defaults input_tokens to 0 when upstream omits usage entirely (Ollama / LMStudio)', async () => {
+    const sseChunks = [
+      'data: {"id":"u2","object":"chat.completion.chunk","created":0,"model":"llama","choices":[{"index":0,"delta":{"role":"assistant","content":"hi"},"finish_reason":null}]}\n\n',
+      'data: {"id":"u2","object":"chat.completion.chunk","created":0,"model":"llama","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+      'data: [DONE]\n\n',
+    ]
+    const events = await collectSse(openaiChatStreamToAnthropic(makeStream(sseChunks), 'llama'))
+    const msgDelta = events.find((e) => e.event === 'message_delta')!
+    const usage = msgDelta.data.usage as Record<string, number>
+    expect(usage.input_tokens).toBe(0)
+    expect(usage.output_tokens).toBe(0)
+  })
+
+  test('held message_delta with separate usage chunk still carries input_tokens', async () => {
+    // Some providers send finish_reason and usage in separate chunks.
+    const sseChunks = [
+      'data: {"id":"u3","object":"chat.completion.chunk","created":0,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant","content":"hi"},"finish_reason":null}]}\n\n',
+      'data: {"id":"u3","object":"chat.completion.chunk","created":0,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+      'data: {"id":"u3","object":"chat.completion.chunk","created":0,"model":"gpt-4","choices":[],"usage":{"prompt_tokens":99,"completion_tokens":11,"total_tokens":110}}\n\n',
+      'data: [DONE]\n\n',
+    ]
+    const events = await collectSse(openaiChatStreamToAnthropic(makeStream(sseChunks), 'gpt-4'))
+    const msgDelta = events.find((e) => e.event === 'message_delta')!
+    const usage = msgDelta.data.usage as Record<string, number>
+    expect(usage.input_tokens).toBe(99)
+    expect(usage.output_tokens).toBe(11)
+  })
 })

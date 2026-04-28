@@ -265,7 +265,11 @@ function processEvent(
       controller.enqueue(encoder.encode(formatSse('message_delta', {
         type: 'message_delta',
         delta: { stop_reason: stopReason, stop_sequence: null },
-        usage: { output_tokens: usage?.output_tokens ?? 0 },
+        // CC client destructures usage.input_tokens; always emit both fields. (#26)
+        usage: {
+          input_tokens: usage?.input_tokens ?? 0,
+          output_tokens: usage?.output_tokens ?? 0,
+        },
       })))
       if (!state.messageStopped) {
         state.messageStopped = true
