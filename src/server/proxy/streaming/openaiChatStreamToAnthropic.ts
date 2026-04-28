@@ -116,14 +116,32 @@ export function openaiChatStreamToAnthropic(
             const trimmed = line.trim()
             if (!trimmed || trimmed.startsWith(':')) continue
 
-            if (trimmed === 'data: [DONE]') {
+            // Tolerate SSE termination variants seen in the wild:
+            //   - `data: [DONE]` (OpenAI canonical, with space)
+            //   - `data:[DONE]`  (Azure / some proxies, no space — see continuedev/continue#5580)
+            //   - `[DONE]`       (LMStudio observed format — see lmstudio-bug-tracker#676)
+            // Without this, parser silently skips the terminator and the stream hangs
+            // until the upstream closes the TCP connection — which LMStudio may never do
+            // when HTTP keep-alive is on.
+            if (
+              trimmed === 'data: [DONE]'
+              || trimmed === 'data:[DONE]'
+              || trimmed === '[DONE]'
+            ) {
               finalizeStream(state)
               flushQueue(state, controller, encoder)
               continue
             }
 
-            if (!trimmed.startsWith('data: ')) continue
-            const jsonStr = trimmed.slice(6)
+            // Accept both `data: ` (with space) and `data:` (no space) prefixes.
+            let jsonStr: string
+            if (trimmed.startsWith('data: ')) {
+              jsonStr = trimmed.slice(6)
+            } else if (trimmed.startsWith('data:')) {
+              jsonStr = trimmed.slice(5)
+            } else {
+              continue
+            }
 
             let chunk: OpenAIChatStreamChunk
             try {
