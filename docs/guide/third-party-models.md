@@ -201,6 +201,60 @@ CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 > **解决办法**：只保留 `ANTHROPIC_AUTH_TOKEN`，把 `ANTHROPIC_API_KEY` 从 `.env` / shell / `~/.claude/settings.json` 中**全部删除**（注意三处都要清）。
 > 详见下文 [§8 阿里 DashScope / Qwen 接入常见问题](#_8-阿里-dashscope-qwen-接入常见问题重要)。
 
+### LMStudio 本地 Anthropic 端点（Gemma 4 / 本地模型）
+
+LMStudio 近期版本提供 **Anthropic-compatible `/v1/messages` 端点**，因此 #57 里的链路可以直接走：
+
+```
+cc-haha ──Anthropic Messages API──▶ LMStudio ──▶ Gemma 4
+```
+
+这条路径**不需要 LiteLLM**，也不需要本项目再做 Anthropic → OpenAI → Anthropic 的双重转换。
+
+**LMStudio 设置**：
+
+1. 在 LMStudio 下载并加载 Gemma 4 / Gemma 3 instruct 模型。
+2. 进入「Developer / Local Server」启动本地服务（默认 `http://localhost:1234`）。
+3. 在「Model Settings」里把 **Context Length** 显式拉到 **32K+**（Claude Code 的 system prompt + tools 很长）。
+4. 复制 LMStudio UI 中显示的精确模型 ID。Gemma 4 通常是 HuggingFace 风格，例如 `google/gemma-4-31b` / `google/gemma-4-26b-a4b`，不要写成 `gemma4` 这种别名。
+
+**本项目配置**：
+
+```env
+# LMStudio 本地服务通常不校验 token，但 Anthropic SDK 仍需要一个 Bearer Token 字符串
+ANTHROPIC_AUTH_TOKEN=lmstudio
+ANTHROPIC_BASE_URL=http://localhost:1234
+
+# 必须与 LMStudio Server 页面显示的模型 ID 完全一致
+ANTHROPIC_MODEL=google/gemma-4-31b
+ANTHROPIC_DEFAULT_SONNET_MODEL=google/gemma-4-31b
+ANTHROPIC_DEFAULT_HAIKU_MODEL=google/gemma-4-31b
+ANTHROPIC_DEFAULT_OPUS_MODEL=google/gemma-4-31b
+
+API_TIMEOUT_MS=3000000
+DISABLE_TELEMETRY=1
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+```
+
+> **不要在 `ANTHROPIC_BASE_URL` 后面手写 `/v1/messages`**：Anthropic SDK 会自动拼接 `/v1/messages`。正确值是 `http://localhost:1234`。
+
+如果你的 LMStudio 版本没有 Anthropic 端点，或者 `/v1/messages` 表现不稳定，再退回 [方式一：LiteLLM 代理](#方式一-litellm-代理推荐)，把 LMStudio 当作 OpenAI-compatible 上游：
+
+```yaml
+# litellm_config.yaml
+model_list:
+  - model_name: gemma4-local
+    litellm_params:
+      model: openai/google/gemma-4-31b
+      api_base: http://localhost:1234/v1
+      api_key: lmstudio
+      stream: false   # 本地模型 + tools 不稳定时建议关闭
+
+litellm_settings:
+  drop_params: true
+  use_chat_completions_url_for_anthropic_messages: true
+```
+
 ### MiniMax（已在 .env.example 中配置）
 
 MiniMax 提供 Anthropic 兼容接口，支持直接接入，无需代理。可用模型：
@@ -354,6 +408,20 @@ model_list:
 > - 助手消息中的 thinking 内容会以 `<thinking>...</thinking>` 形式保留进下一轮 prompt（防止多轮推理上下文丢失）
 >
 > 但**第 7.1 / 7.2 / 7.3 是上游限制，必须在 Ollama / LMStudio 侧配置**。
+
+#### 7.4 LMStudio + Gemma 4：优先走原生 Anthropic 端点
+
+如果你用的是 LMStudio，优先按上文 [LMStudio 本地 Anthropic 端点](#lmstudio-本地-anthropic-端点gemma-4--本地模型) 直连 `http://localhost:1234`。原因：
+
+- Claude Code / cc-haha 原生发的是 Anthropic Messages API，请求结构和工具调用语义更接近 LMStudio `/v1/messages`。
+- 直连可避免 `Anthropic → OpenAI Chat Completions → Anthropic` 的双重协议转换，少一层 tool_call / thinking / streaming 兼容风险。
+- LMStudio 的 OpenAI-compatible `/v1/chat/completions` 也能用，但本地模型 + tools + streaming 组合更容易暴露分片、`[DONE]`、tool_call id、reasoning 字段等兼容问题。
+
+Gemma 4 虽然宣称支持 function calling，但在 Claude Code 这种「长 system prompt + 大量 tools + 多轮 tool_result」场景下仍可能不稳定。若你的目标是日常 agentic coding，而不是单轮问答，推荐优先试：
+
+1. LMStudio 原生 Anthropic 端点 + Qwen Coder / Llama 3.1 class 模型
+2. LMStudio 原生 Anthropic 端点 + Gemma 4（可用但不保证多轮工具稳定）
+3. LiteLLM fallback + `stream: false`（仅当 LMStudio `/v1/messages` 不可用时）
 
 ### 8. 阿里 DashScope / Qwen 接入常见问题（重要）
 

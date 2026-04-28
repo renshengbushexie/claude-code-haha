@@ -107,3 +107,25 @@ bun upgrade
 | 模型本身 | Gemma 3 / 4 工具调用训练数据稀缺，多轮场景不稳定（Ollama #9680 / #15241） | **换模型**：推荐 `qwen2.5-coder:14b+`、`llama3.1:8b+` |
 
 详细操作步骤见 [第三方模型使用指南 §7 本地模型工具调用与多轮上下文](./third-party-models.md#7-本地模型ollama--lmstudio工具调用与多轮上下文重要)。
+
+## Q: 可以用 LMStudio 启动 Gemma 4 接入 cc-haha 吗？
+
+可以。推荐使用 LMStudio 的原生 Anthropic-compatible 端点：
+
+```env
+ANTHROPIC_AUTH_TOKEN=lmstudio
+ANTHROPIC_BASE_URL=http://localhost:1234
+ANTHROPIC_MODEL=google/gemma-4-31b
+ANTHROPIC_DEFAULT_SONNET_MODEL=google/gemma-4-31b
+ANTHROPIC_DEFAULT_HAIKU_MODEL=google/gemma-4-31b
+ANTHROPIC_DEFAULT_OPUS_MODEL=google/gemma-4-31b
+API_TIMEOUT_MS=3000000
+```
+
+注意三点：
+
+1. `ANTHROPIC_BASE_URL` 写 `http://localhost:1234`，不要手动加 `/v1/messages`。
+2. `ANTHROPIC_MODEL` 必须和 LMStudio Server 页面显示的模型 ID 完全一致；上面的 `google/gemma-4-31b` 只是示例。
+3. Gemma 4 虽然支持 function calling，但在 Claude Code 这种多轮工具调用场景下仍可能不稳定；请把 LMStudio 的 Context Length 拉到 32K+，并优先考虑 Qwen Coder / Llama 3.1 class 模型做 agentic coding。
+
+完整说明见 [第三方模型使用指南 §LMStudio 本地 Anthropic 端点](./third-party-models.md#lmstudio-本地-anthropic-端点gemma-4--本地模型)。
