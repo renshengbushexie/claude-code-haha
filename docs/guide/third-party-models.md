@@ -170,6 +170,37 @@ DISABLE_TELEMETRY=1
 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 ```
 
+### 阿里 DashScope / Qwen Anthropic 端点（Coding Plan）
+
+阿里云 DashScope 的 **Coding Plan** 提供 Anthropic 协议兼容端点，可以直接接入，无需 LiteLLM 协议转换。
+
+**端点与 Key 说明**：
+
+| 项 | 值 |
+|---|---|
+| Base URL | `https://coding.dashscope.aliyuncs.com/apps/anthropic` |
+| Key 前缀 | `sk-` 开头的 Coding Plan 专用 key（在阿里云控制台「百炼 / Coding Plan」开通获取） |
+| 认证方式 | **必须用 `Authorization: Bearer`**，即 `ANTHROPIC_AUTH_TOKEN` 而非 `ANTHROPIC_API_KEY` |
+| 推荐模型 | `qwen3-coder-plus` / `qwen3-coder` / `qwen-max` / `qwen-plus` |
+
+```env
+# ⚠️ 只设 ANTHROPIC_AUTH_TOKEN，不要再设 ANTHROPIC_API_KEY
+ANTHROPIC_AUTH_TOKEN=sk-your-coding-plan-key
+ANTHROPIC_BASE_URL=https://coding.dashscope.aliyuncs.com/apps/anthropic
+ANTHROPIC_MODEL=qwen3-coder-plus
+ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3-coder-plus
+ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3-coder
+ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3-coder-plus
+API_TIMEOUT_MS=3000000
+DISABLE_TELEMETRY=1
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+```
+
+> **常见 401 / 「Auth conflict」陷阱**：如果你同时设置了 `ANTHROPIC_API_KEY` 和 `ANTHROPIC_AUTH_TOKEN`，
+> 上游会同时收到 `x-api-key` 和 `Authorization: Bearer` 两个认证头，DashScope 端点会判定为认证冲突直接 401。
+> **解决办法**：只保留 `ANTHROPIC_AUTH_TOKEN`，把 `ANTHROPIC_API_KEY` 从 `.env` / shell / `~/.claude/settings.json` 中**全部删除**（注意三处都要清）。
+> 详见下文 [§8 阿里 DashScope / Qwen 接入常见问题](#_8-阿里-dashscope-qwen-接入常见问题重要)。
+
 ### MiniMax（已在 .env.example 中配置）
 
 MiniMax 提供 Anthropic 兼容接口，支持直接接入，无需代理。可用模型：
@@ -323,6 +354,80 @@ model_list:
 > - 助手消息中的 thinking 内容会以 `<thinking>...</thinking>` 形式保留进下一轮 prompt（防止多轮推理上下文丢失）
 >
 > 但**第 7.1 / 7.2 / 7.3 是上游限制，必须在 Ollama / LMStudio 侧配置**。
+
+### 8. 阿里 DashScope / Qwen 接入常见问题（重要）
+
+接入阿里云 Qwen / DashScope 时，401、403、`找不到该大模型` 等错误几乎都来自下面四类配置混淆。
+
+#### 8.1 选对端点：Anthropic-compat vs OpenAI-compat
+
+DashScope 同时提供两种协议端点，**它们用的 Key 不一样、走的协议也不一样**：
+
+| 端点 | 协议 | 适用 Key | 用法 |
+|---|---|---|---|
+| `https://coding.dashscope.aliyuncs.com/apps/anthropic` | **Anthropic** | Coding Plan key（`sk-` 开头，控制台「百炼 / Coding Plan」开通） | 直连本项目，**无需 LiteLLM** |
+| `https://dashscope.aliyuncs.com/compatible-mode/v1`（国内） | OpenAI | 普通 DashScope key（`sk-` 开头） | 必须经 LiteLLM 协议转换 |
+| `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`（国际） | OpenAI | 国际版 DashScope key | 必须经 LiteLLM 协议转换 |
+
+**两种 Key 不可互换**：Coding Plan key 不能用于 OpenAI-compat 端点；普通 DashScope key 也不能用于 Anthropic-compat 端点。错配会直接 401。
+
+#### 8.2 只用一种认证变量（避免 Auth conflict）
+
+`ANTHROPIC_API_KEY` 和 `ANTHROPIC_AUTH_TOKEN` **同时设置**时，Anthropic SDK 会同时发送 `x-api-key` 和 `Authorization: Bearer` 两个头。DashScope 严格校验，会直接拒绝。
+
+**强制要求**：接入 DashScope 时**只保留 `ANTHROPIC_AUTH_TOKEN`**，把 `ANTHROPIC_API_KEY` 从下列**所有位置**清除：
+
+- `.env`
+- 当前 shell 的环境变量（`unset ANTHROPIC_API_KEY` / Windows `Remove-Item Env:\ANTHROPIC_API_KEY`）
+- `~/.claude/settings.json` 的 `env` 字段
+- 系统级配置（`~/.bashrc` / `~/.zshrc` / Windows 系统环境变量）
+
+**自检命令**：
+
+```bash
+# macOS / Linux
+env | grep -i anthropic
+# Windows PowerShell
+Get-ChildItem Env:ANTHROPIC*
+```
+
+输出里**只能看到** `ANTHROPIC_AUTH_TOKEN` 和 `ANTHROPIC_BASE_URL` 等，**不能出现** `ANTHROPIC_API_KEY`。
+
+#### 8.3 model 名要写官方 ID
+
+`ANTHROPIC_MODEL` 必须写 DashScope **官方模型 ID**，不能用别名：
+
+✅ 正确：`qwen3-coder-plus` / `qwen3-coder` / `qwen-max` / `qwen-plus` / `qwen-turbo`
+❌ 错误：`qwen` / `qwen3` / `coder` / `claude-3-sonnet`（错配会返回 `找不到该大模型`）
+
+完整模型列表见阿里云控制台「百炼」→「模型广场」。
+
+#### 8.4 走 OpenAI-compat 端点时必须用 LiteLLM
+
+如果你**不是** Coding Plan 用户，只有普通 DashScope key，那只能走 OpenAI-compat 端点，**必须**走 LiteLLM 协议转换：
+
+```yaml
+# litellm_config.yaml
+model_list:
+  - model_name: qwen-plus
+    litellm_params:
+      model: openai/qwen-plus
+      api_key: os.environ/DASHSCOPE_API_KEY
+      api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+litellm_settings:
+  drop_params: true
+```
+
+然后按本文 [§方式一](#方式一-litellm-代理推荐) 启动 LiteLLM 并把 `ANTHROPIC_BASE_URL` 指向 `http://localhost:4000`。
+
+#### 8.5 LongCat / 其他「Anthropic 兼容」第三方端点
+
+社区还有 LongCat (`https://api.longcat.chat/anthropic`) 等同样宣称兼容 Anthropic 协议的端点。它们的常见坑跟 DashScope Coding Plan 一致：
+
+- 必须用 `ANTHROPIC_AUTH_TOKEN`，**不能**同时设 `ANTHROPIC_API_KEY`
+- model 名要用各自平台的官方 ID
+- 没有官方报错时，先按上面 §8.2 自检环境变量是否冲突
 
 ---
 

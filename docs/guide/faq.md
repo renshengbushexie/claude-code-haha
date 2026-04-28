@@ -58,6 +58,42 @@ bun upgrade
    设置后 CLI 不再尝试安装、不再弹 toast；如需手动管理插件市场可用 `/plugin` 命令
 3. **配置网络代理**：如果你确实需要官方插件市场，给 shell 设置 `HTTPS_PROXY` 让 GCS / GitHub 可达即可
 
+## Q: 接入阿里 Qwen / DashScope 报 401，或日志里出现 `Auth conflict` / 「Both ANTHROPIC_AUTH_TOKEN and ANTHROPIC_API_KEY are set」
+
+**症状**：把 `ANTHROPIC_BASE_URL` 改到 `https://coding.dashscope.aliyuncs.com/apps/anthropic`（或 LongCat 等其他 Anthropic 兼容端点）之后，启动就报 401，或日志里出现 `Both ANTHROPIC_AUTH_TOKEN and ANTHROPIC_API_KEY are set` 警告。
+
+**根因**：你**同时**设置了 `ANTHROPIC_API_KEY` 和 `ANTHROPIC_AUTH_TOKEN`，Anthropic SDK 会同时发送 `x-api-key` 和 `Authorization: Bearer` 两个认证头，DashScope / LongCat 等严格校验的端点会判定为认证冲突直接拒绝。
+
+**解决**：
+
+1. 只保留 `ANTHROPIC_AUTH_TOKEN`，从下列**所有位置**清除 `ANTHROPIC_API_KEY`：
+   - `.env`
+   - 当前 shell（`unset ANTHROPIC_API_KEY` / PowerShell `Remove-Item Env:\ANTHROPIC_API_KEY`）
+   - `~/.claude/settings.json` 的 `env` 字段
+   - `~/.bashrc` / `~/.zshrc` / Windows 系统环境变量
+2. 自检：
+
+   ```bash
+   # macOS / Linux
+   env | grep -i anthropic
+   # Windows PowerShell
+   Get-ChildItem Env:ANTHROPIC*
+   ```
+
+   输出里**不能出现** `ANTHROPIC_API_KEY`。
+3. 顺便确认 `ANTHROPIC_MODEL` 用的是 DashScope 官方模型 ID（如 `qwen3-coder-plus`），不是 `qwen` / `claude-3-sonnet` 之类的别名。
+
+详见 [第三方模型使用指南 §8 阿里 DashScope / Qwen 接入常见问题](./third-party-models.md#_8-阿里-dashscope-qwen-接入常见问题重要)。
+
+## Q: 接入 Qwen 提示「找不到该大模型」
+
+**根因**：`ANTHROPIC_MODEL` 写成了别名而非 DashScope 官方模型 ID。
+
+✅ 正确：`qwen3-coder-plus` / `qwen3-coder` / `qwen-max` / `qwen-plus` / `qwen-turbo`
+❌ 错误：`qwen` / `qwen3` / `coder` / `claude-3-sonnet`
+
+完整模型列表见阿里云控制台「百炼」→「模型广场」。注意 `ANTHROPIC_DEFAULT_SONNET_MODEL` / `ANTHROPIC_DEFAULT_HAIKU_MODEL` / `ANTHROPIC_DEFAULT_OPUS_MODEL` 三个回退变量也要一并改成官方 ID，否则在某些场景下仍会用回旧的 Claude 模型名。
+
 ## Q: Ollama / LMStudio 多轮对话「忘记」工具结果，或工具调用进入死循环
 
 **症状**：接入本地 Ollama / LMStudio + Gemma 3/4 等模型时，第二轮起模型无视前面工具的执行结果、反复调用同一个工具、或干脆停止调用工具。
