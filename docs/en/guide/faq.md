@@ -32,3 +32,28 @@ bun upgrade
 This project only supports the Anthropic protocol. If your model provider doesn't natively support the Anthropic protocol, you need a proxy like [LiteLLM](https://github.com/BerriAI/litellm) for protocol translation (OpenAI → Anthropic).
 
 See the [Third-Party Models Guide](./third-party-models.md) for detailed setup instructions.
+
+## Q: Startup toast `Failed to install Anthropic marketplace · Will retry on next startup`
+
+**Symptom**: A yellow warning toast appears in the bottom-left of the TUI on startup, saying the official Anthropic marketplace failed to install.
+
+**Cause**: On startup the CLI tries to install the official plugin marketplace from two sources:
+
+1. GCS mirror: `https://downloads.claude.ai/...`
+2. Git clone fallback: `github.com/anthropics/claude-plugins-official`
+
+In some networks (e.g. mainland China without a proxy) both endpoints are unreachable and the install fails. This **does not affect core CLI functionality** — it only affects the official plugin catalog under the `/plugin` command.
+
+**Important**: The failure state is persisted to `~/.claude.json` and retried with **exponential backoff** (1h → 2h → 4h → … capped at 1 week, max 10 attempts). So **ignoring the toast is safe** — it will not retry on every startup and will never block the CLI.
+
+**Three ways to handle it (pick one)**:
+
+1. **Just ignore it**: the toast is harmless and retries are already backed off
+2. **Disable auto-install (silent)**: set in `.env` or your shell environment:
+
+   ```env
+   CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL=1
+   ```
+
+   The CLI will stop attempting installs and stop showing the toast. You can still manage marketplaces manually via the `/plugin` command
+3. **Configure a network proxy**: if you actually need the official marketplace, set `HTTPS_PROXY` in your shell so GCS / GitHub become reachable

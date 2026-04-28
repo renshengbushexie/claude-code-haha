@@ -13,6 +13,7 @@
 | `API_TIMEOUT_MS` | No | API request timeout, default `600000` (10min) |
 | `DISABLE_TELEMETRY` | No | Set to `1` to disable telemetry |
 | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | No | Set to `1` to disable non-essential network traffic |
+| `CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL` | No | Set to `1` to disable auto-installing the official plugin marketplace at startup. See [FAQ](./faq.md) |
 
 ## Configuration Methods
 

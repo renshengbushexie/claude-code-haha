@@ -32,3 +32,28 @@ bun upgrade
 本项目只支持 Anthropic 协议。如果模型供应商不直接支持 Anthropic 协议，需要用 [LiteLLM](https://github.com/BerriAI/litellm) 等代理做协议转换（OpenAI → Anthropic）。
 
 详细配置步骤请参考：[第三方模型使用指南](./third-party-models.md)
+
+## Q: 启动时提示 `Failed to install Anthropic marketplace · Will retry on next startup`
+
+**现象**：启动 TUI 时左下角弹出黄色警告 toast，提示官方插件市场（Anthropic marketplace）安装失败。
+
+**原因**：CLI 启动时会尝试从两个源安装官方插件市场：
+
+1. GCS 镜像：`https://downloads.claude.ai/...`
+2. 回退到 git clone：`github.com/anthropics/claude-plugins-official`
+
+国内网络环境下两个域名常常都无法直连，安装会失败。这**不影响 CLI 核心功能**，只影响 `/plugin` 命令下的官方插件目录。
+
+**重要**：失败状态会持久化到 `~/.claude.json`，并以**指数退避重试**（1 小时 → 2h → 4h → … 上限 1 周，最多 10 次），所以**忽略这条 toast 也是安全的**——不会每次启动都重试，更不会阻塞 CLI。
+
+**三种处理方式（任选其一）**：
+
+1. **直接忽略**：toast 不影响功能，重试机制会自动退避
+2. **禁用自动安装（静默）**：在 `.env` 或 shell 环境变量中设置：
+
+   ```env
+   CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL=1
+   ```
+
+   设置后 CLI 不再尝试安装、不再弹 toast；如需手动管理插件市场可用 `/plugin` 命令
+3. **配置网络代理**：如果你确实需要官方插件市场，给 shell 设置 `HTTPS_PROXY` 让 GCS / GitHub 可达即可
