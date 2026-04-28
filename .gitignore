@@ -67,3 +67,14 @@ runtime/__pycache__
 .idea
 # OpenCode (local agent context, not shared)
 .opencode/
+
+# Go runtime build artifacts (built locally via scripts/build-runtime.*)
+bin/oc-runtime
+bin/oc-runtime.exe
+
+# Local runtime data (SQLite + endpoint file)
+runtime.db
+runtime.endpoint
+
+# npm lockfile rescue backups
+package-lock.json.bak-*
