@@ -235,6 +235,26 @@ DISABLE_TELEMETRY=1
 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 ```
 
+### 6. DeepSeek `max_tokens` 上限（重要）
+
+DeepSeek 的 Anthropic 兼容端点（`https://api.deepseek.com/anthropic`）对 `max_tokens` 有上限，且**不同模型差别很大**：
+
+| 模型 | 最大 `max_tokens` | 备注 |
+|------|------------------|------|
+| `deepseek-chat`（V4 系，含 V4-flash / V4-pro） | **384,000** | Claude Code 默认 200,000 不会超限 |
+| `deepseek-reasoner`（旧 R1，含 thinking） | **64,000**（默认 32,000） | `max_tokens` **包含** thinking tokens；超限直接返回 HTTP 400 |
+| 兼容层旧版本 | 8,192 | 历史限制；如果你接的是其他自称 DeepSeek 兼容的代理，可能仍是 8K |
+
+**症状**：接入一段时间后突然返回 `400 Bad Request`，错误体里通常包含 `max_tokens` / `tokens exceeded` 字样 — 几乎都是命中了上面的上限（特别是 `deepseek-reasoner` 在长 thinking 之后）。
+
+**对应做法**：
+
+- 优先用 `deepseek-chat`（V4 系），上限充裕
+- 如果一定要用 `deepseek-reasoner`：在你的客户端 / 中间代理把 `max_tokens` 降到 ≤ 60,000，并预留几千给 thinking
+- 接到老的"DeepSeek 兼容代理"（非官方）报 `max_tokens must be <= 8192` 时，直接换上游
+
+> 上游官方文档：[DeepSeek Pricing & Limits](https://api-docs.deepseek.com/quick_start/pricing)
+
 ---
 
 ## FAQ
@@ -262,3 +282,7 @@ LiteLLM 代理默认接受 Bearer Token 格式，建议使用 `ANTHROPIC_AUTH_TO
 ### Q: 本地 Ollama 模型效果不好怎么办？
 
 本项目的系统提示和工具调用对模型能力要求较高。建议使用参数量较大的模型（如 Llama 3 70B+, Qwen 72B+），小模型可能无法正确处理工具调用。
+
+### Q: 接入 DeepSeek 一段时间后突然 HTTP 400？
+
+绝大多数情况是命中了 `max_tokens` 上限。详见上文 [《DeepSeek max_tokens 上限》](#_6-deepseek-max-tokens-上限重要)。最快的排查办法：把模型从 `deepseek-reasoner` 换成 `deepseek-chat` 重试；如果不再 400，就是 reasoner 的 64K 上限触发。

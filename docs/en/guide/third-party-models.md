@@ -235,6 +235,26 @@ DISABLE_TELEMETRY=1
 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 ```
 
+### 6. DeepSeek `max_tokens` Limits (Important)
+
+DeepSeek's Anthropic-compatible endpoint (`https://api.deepseek.com/anthropic`) enforces a `max_tokens` cap that **varies significantly by model**:
+
+| Model | Max `max_tokens` | Notes |
+|-------|------------------|-------|
+| `deepseek-chat` (V4 family, incl. V4-flash / V4-pro) | **384,000** | Claude Code's default 200,000 stays well within the cap |
+| `deepseek-reasoner` (legacy R1 with thinking) | **64,000** (default 32,000) | `max_tokens` **includes** thinking tokens; exceeding the cap returns HTTP 400 |
+| Older compatibility-layer versions | 8,192 | Historical limit; some unofficial "DeepSeek-compatible" proxies may still enforce 8K |
+
+**Symptom**: After running fine for a while, requests start failing with `400 Bad Request`, and the error body usually mentions `max_tokens` / `tokens exceeded` — almost always one of the limits above (especially `deepseek-reasoner` after long thinking traces).
+
+**What to do**:
+
+- Prefer `deepseek-chat` (V4 family) — its cap is generous
+- If you must use `deepseek-reasoner`: cap `max_tokens` at ≤ 60,000 in your client/proxy and leave a few thousand tokens of headroom for thinking
+- If a third-party "DeepSeek-compatible" proxy returns `max_tokens must be <= 8192`, switch upstream
+
+> Upstream reference: [DeepSeek Pricing & Limits](https://api-docs.deepseek.com/quick_start/pricing)
+
 ---
 
 ## FAQ
@@ -262,3 +282,7 @@ Yes. Define multiple `model_name` entries in `litellm_config.yaml`, then switch 
 ### Q: Local Ollama models don't work well?
 
 This project's system prompts and tool calls require strong model capabilities. Use larger models (e.g., Llama 3 70B+, Qwen 72B+). Smaller models may fail to handle tool calling correctly.
+
+### Q: DeepSeek starts returning HTTP 400 after working fine for a while?
+
+Almost always a `max_tokens` cap hit. See [DeepSeek `max_tokens` Limits](#_6-deepseek-max-tokens-limits-important) above. Quickest check: switch the model from `deepseek-reasoner` to `deepseek-chat` and retry — if 400s stop, you were hitting reasoner's 64K cap.
