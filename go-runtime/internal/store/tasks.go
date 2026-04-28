@@ -3,8 +3,12 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
+
+	"github.com/open-claude-code/go-runtime/internal/state"
 )
 
 type Task struct {
@@ -35,6 +39,24 @@ type CreateTaskInput struct {
 }
 
 var ErrNotFound = errors.New("not found")
+
+// ErrIllegalTransition is returned by TransitionTask when the requested
+// from→to pair is rejected by state.Allowed (terminal-from or matrix miss).
+var ErrIllegalTransition = errors.New("illegal state transition")
+
+// ErrStateMismatch is returned by TransitionTask when the caller's
+// expectedFrom does not match the row's current status (CAS-style guard
+// against concurrent transitions).
+var ErrStateMismatch = errors.New("state mismatch")
+
+// TaskTransition is one row from the task_events log filtered to type='transition'.
+type TaskTransition struct {
+	Seq    int64  `json:"seq"`
+	TS     int64  `json:"ts"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Reason string `json:"reason,omitempty"`
+}
 
 func (db *DB) CreateTask(ctx context.Context, in CreateTaskInput) (*Task, error) {
 	id := newID()
@@ -116,4 +138,123 @@ func scanTask(s scanner) (*Task, error) {
 		return nil, err
 	}
 	return &t, nil
+}
+
+// TransitionTask atomically moves a task from expectedFrom to to, recording
+// a transition event in task_events. The operation is rejected if:
+//   - the task does not exist (ErrNotFound)
+//   - the current row status differs from expectedFrom (ErrStateMismatch)
+//   - state.Allowed(expectedFrom, to) is false (ErrIllegalTransition)
+//
+// On success, returns the updated *Task. updated_at, started_at, finished_at,
+// and last_error are maintained automatically based on the target state.
+func (db *DB) TransitionTask(ctx context.Context, id string, expectedFrom, to state.Status, reason string) (*Task, error) {
+	if !state.IsValid(expectedFrom) || !state.IsValid(to) {
+		return nil, ErrIllegalTransition
+	}
+	if !state.Allowed(expectedFrom, to) {
+		return nil, ErrIllegalTransition
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var current string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM tasks WHERE id = ?`, id).Scan(&current); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if current != string(expectedFrom) {
+		return nil, fmt.Errorf("%w: have %q, want %q", ErrStateMismatch, current, expectedFrom)
+	}
+
+	now := time.Now().UnixMilli()
+	setStarted := to == state.Running
+	setFinished := state.IsTerminal(to)
+
+	var sb = `UPDATE tasks SET status = ?, updated_at = ?`
+	args := []any{string(to), now}
+	if setStarted {
+		sb += `, started_at = COALESCE(started_at, ?)`
+		args = append(args, now)
+	}
+	if setFinished {
+		sb += `, finished_at = ?`
+		args = append(args, now)
+	}
+	if to == state.Failed && reason != "" {
+		sb += `, last_error = ?`
+		args = append(args, reason)
+	}
+	sb += ` WHERE id = ? AND status = ?`
+	args = append(args, id, string(expectedFrom))
+
+	res, err := tx.ExecContext(ctx, sb, args...)
+	if err != nil {
+		return nil, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if n != 1 {
+		return nil, ErrStateMismatch
+	}
+
+	payload, _ := json.Marshal(map[string]any{
+		"from":   string(expectedFrom),
+		"to":     string(to),
+		"reason": reason,
+	})
+	if _, err := tx.ExecContext(ctx, `INSERT INTO task_events
+		(ts, type, scope, task_id, payload) VALUES (?, ?, ?, ?, ?)`,
+		now, "transition", "task", id, string(payload)); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return db.GetTask(ctx, id)
+}
+
+// ListTransitions returns every transition recorded for a task, oldest first.
+// Returns an empty slice (not an error) when no events exist.
+func (db *DB) ListTransitions(ctx context.Context, taskID string) ([]TaskTransition, error) {
+	rows, err := db.QueryContext(ctx, `SELECT seq, ts, payload
+		FROM task_events
+		WHERE task_id = ? AND type = 'transition'
+		ORDER BY seq ASC`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]TaskTransition, 0, 8)
+	for rows.Next() {
+		var (
+			seq, ts int64
+			raw     string
+		)
+		if err := rows.Scan(&seq, &ts, &raw); err != nil {
+			return nil, err
+		}
+		var p struct {
+			From   string `json:"from"`
+			To     string `json:"to"`
+			Reason string `json:"reason"`
+		}
+		if err := json.Unmarshal([]byte(raw), &p); err != nil {
+			return nil, err
+		}
+		out = append(out, TaskTransition{
+			Seq: seq, TS: ts, From: p.From, To: p.To, Reason: p.Reason,
+		})
+	}
+	return out, rows.Err()
 }
