@@ -124,6 +124,56 @@ describe('openaiChatStreamToAnthropic', () => {
     expect((msgDelta.data.delta as Record<string, unknown>).stop_reason).toBe('tool_use')
   })
 
+  test('tool call streaming without id (Ollama/LMStudio) → synthesizes id (#195)', async () => {
+    // Ollama Gemma streams tool_calls without id field; without fallback the
+    // tool block is silently dropped because the start condition requires id.
+    const sseChunks = [
+      'data: {"id":"c-noid","object":"chat.completion.chunk","created":0,"model":"gemma3:12b","choices":[{"index":0,"delta":{"role":"assistant","content":null},"finish_reason":null}]}\n\n',
+      'data: {"id":"c-noid","object":"chat.completion.chunk","created":0,"model":"gemma3:12b","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"type":"function","function":{"name":"list_files","arguments":""}}]},"finish_reason":null}]}\n\n',
+      'data: {"id":"c-noid","object":"chat.completion.chunk","created":0,"model":"gemma3:12b","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]},"finish_reason":null}]}\n\n',
+      'data: {"id":"c-noid","object":"chat.completion.chunk","created":0,"model":"gemma3:12b","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+      'data: [DONE]\n\n',
+    ]
+
+    const upstream = makeStream(sseChunks)
+    const anthropicStream = openaiChatStreamToAnthropic(upstream, 'gemma3:12b')
+    const events = await collectSse(anthropicStream)
+
+    const toolStart = events.find(
+      (e) => e.event === 'content_block_start' && (e.data.content_block as Record<string, unknown>)?.type === 'tool_use',
+    )
+    expect(toolStart).toBeDefined()
+    const block = toolStart!.data.content_block as Record<string, unknown>
+    expect(block.name).toBe('list_files')
+    expect(typeof block.id).toBe('string')
+    expect((block.id as string).length).toBeGreaterThan(0)
+    expect(block.id as string).toMatch(/^call_/)
+  })
+
+  test('multiple tool calls without id → unique synthesized ids (#195)', async () => {
+    const sseChunks = [
+      'data: {"id":"c-multi","object":"chat.completion.chunk","created":0,"model":"gemma3:12b","choices":[{"index":0,"delta":{"role":"assistant","content":null},"finish_reason":null}]}\n\n',
+      'data: {"id":"c-multi","object":"chat.completion.chunk","created":0,"model":"gemma3:12b","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"type":"function","function":{"name":"a","arguments":"{}"}}]},"finish_reason":null}]}\n\n',
+      'data: {"id":"c-multi","object":"chat.completion.chunk","created":0,"model":"gemma3:12b","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"type":"function","function":{"name":"b","arguments":"{}"}}]},"finish_reason":null}]}\n\n',
+      'data: {"id":"c-multi","object":"chat.completion.chunk","created":0,"model":"gemma3:12b","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+      'data: [DONE]\n\n',
+    ]
+
+    const upstream = makeStream(sseChunks)
+    const anthropicStream = openaiChatStreamToAnthropic(upstream, 'gemma3:12b')
+    const events = await collectSse(anthropicStream)
+
+    const toolStarts = events.filter(
+      (e) => e.event === 'content_block_start' && (e.data.content_block as Record<string, unknown>)?.type === 'tool_use',
+    )
+    expect(toolStarts).toHaveLength(2)
+    const id0 = (toolStarts[0].data.content_block as Record<string, unknown>).id as string
+    const id1 = (toolStarts[1].data.content_block as Record<string, unknown>).id as string
+    expect(id0.length).toBeGreaterThan(0)
+    expect(id1.length).toBeGreaterThan(0)
+    expect(id0).not.toBe(id1)
+  })
+
   test('empty stream (just DONE)', async () => {
     const upstream = makeStream(['data: [DONE]\n\n'])
     const anthropicStream = openaiChatStreamToAnthropic(upstream, 'gpt-4')

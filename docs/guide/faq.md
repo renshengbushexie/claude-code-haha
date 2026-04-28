@@ -57,3 +57,17 @@ bun upgrade
 
    设置后 CLI 不再尝试安装、不再弹 toast；如需手动管理插件市场可用 `/plugin` 命令
 3. **配置网络代理**：如果你确实需要官方插件市场，给 shell 设置 `HTTPS_PROXY` 让 GCS / GitHub 可达即可
+
+## Q: Ollama / LMStudio 多轮对话「忘记」工具结果，或工具调用进入死循环
+
+**症状**：接入本地 Ollama / LMStudio + Gemma 3/4 等模型时，第二轮起模型无视前面工具的执行结果、反复调用同一个工具、或干脆停止调用工具。
+
+**根因有三层，proxy 只能修第一层**：
+
+| 层 | 问题 | 谁来修 |
+|---|---|---|
+| Proxy 转换层 | 上游不返回 `tool_call.id` 时 → Anthropic 客户端无法配对多轮 tool_use ↔ tool_result；助手 thinking 块在多轮对话中被丢弃 | **本项目已修复 (#195)**：合成 fallback id + thinking 以 `<thinking>` 标签保留进 prompt |
+| Ollama 配置 | `num_ctx` 默认 12K，但 Claude Code system prompt + 工具定义就 30K+，工具定义被静默截断 | **必须自己改**：把模型 `num_ctx` 改到 ≥ 32768 |
+| 模型本身 | Gemma 3 / 4 工具调用训练数据稀缺，多轮场景不稳定（Ollama #9680 / #15241） | **换模型**：推荐 `qwen2.5-coder:14b+`、`llama3.1:8b+` |
+
+详细操作步骤见 [第三方模型使用指南 §7 本地模型工具调用与多轮上下文](./third-party-models.md#7-本地模型ollama--lmstudio工具调用与多轮上下文重要)。

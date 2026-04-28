@@ -48,20 +48,25 @@ export function openaiChatToAnthropic(response: OpenAIChatResponse, model: strin
 
   // Convert tool calls
   if (choice.message.tool_calls) {
-    for (const tc of choice.message.tool_calls) {
+    choice.message.tool_calls.forEach((tc, idx) => {
       let input: Record<string, unknown> = {}
       try {
         input = JSON.parse(tc.function.arguments)
       } catch {
         input = { raw: tc.function.arguments }
       }
+      // Some upstream providers (Ollama, certain LMStudio builds) omit tool_call.id.
+      // Anthropic clients require a stable id to pair tool_use ↔ tool_result in
+      // multi-turn conversations; without it the next turn's tool_result block
+      // cannot be matched and the conversation context silently breaks (#195).
+      const id = tc.id || `call_${response.id || Date.now().toString(36)}_${idx}`
       content.push({
         type: 'tool_use',
-        id: tc.id,
+        id,
         name: tc.function.name,
         input,
       })
-    }
+    })
   }
 
   // If no content at all, add empty text

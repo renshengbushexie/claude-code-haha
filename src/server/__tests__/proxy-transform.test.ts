@@ -178,6 +178,48 @@ describe('anthropicToOpenaiChat', () => {
     expect(result.messages[0].content).toBe('Sunny, 72°F')
   })
 
+  test('assistant thinking blocks preserved as inline tag (#195)', () => {
+    // Multi-turn conversations with reasoning models: previously the assistant's
+    // prior thinking was stripped, so the model lost reasoning context across
+    // turns. Now we inline it as <thinking>...</thinking> in the text content.
+    const req: AnthropicRequest = {
+      model: 'gemma3:12b',
+      max_tokens: 100,
+      messages: [{
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'I should check the weather first.' },
+          { type: 'text', text: 'Let me check' },
+          { type: 'tool_use', id: 'tc_1', name: 'get_weather', input: { city: 'NYC' } },
+        ],
+      }],
+    }
+    const result = anthropicToOpenaiChat(req)
+    const msg = result.messages[0]
+    expect(msg.role).toBe('assistant')
+    expect(typeof msg.content).toBe('string')
+    expect(msg.content as string).toContain('<thinking>I should check the weather first.</thinking>')
+    expect(msg.content as string).toContain('Let me check')
+    // tool_calls must still be intact
+    expect(msg.tool_calls).toHaveLength(1)
+    expect(msg.tool_calls![0].id).toBe('tc_1')
+  })
+
+  test('assistant thinking only (no text) preserved (#195)', () => {
+    const req: AnthropicRequest = {
+      model: 'gemma3:12b',
+      max_tokens: 100,
+      messages: [{
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'Pondering...' },
+        ],
+      }],
+    }
+    const result = anthropicToOpenaiChat(req)
+    expect(result.messages[0].content).toBe('<thinking>Pondering...</thinking>')
+  })
+
   test('image content conversion', () => {
     const req: AnthropicRequest = {
       model: 'gpt-4',
@@ -249,6 +291,69 @@ describe('openaiChatToAnthropic', () => {
       expect(result.content[0].id).toBe('call_1')
       expect(result.content[0].name).toBe('get_weather')
       expect(result.content[0].input).toEqual({ city: 'NYC' })
+    }
+  })
+
+  // ─── #195 regression: Ollama / LMStudio omit tool_call.id ─────
+  test('tool_calls without id → synthesizes stable fallback id (#195)', () => {
+    const res: OpenAIChatResponse = {
+      id: 'chatcmpl-noid',
+      object: 'chat.completion',
+      created: 1234567890,
+      model: 'gemma3:12b',
+      choices: [{
+        index: 0,
+        message: {
+          role: 'assistant',
+          content: null,
+          // Ollama Gemma omits id field entirely
+          tool_calls: [{
+            type: 'function',
+            function: { name: 'list_files', arguments: '{"path":"."}' },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any],
+        },
+        finish_reason: 'tool_calls',
+      }],
+    }
+    const result = openaiChatToAnthropic(res, 'gemma3:12b')
+    expect(result.content[0].type).toBe('tool_use')
+    if (result.content[0].type === 'tool_use') {
+      // Must be a non-empty string so multi-turn tool_result.tool_use_id can match
+      expect(typeof result.content[0].id).toBe('string')
+      expect(result.content[0].id.length).toBeGreaterThan(0)
+      expect(result.content[0].id).toMatch(/^call_/)
+    }
+  })
+
+  test('multiple tool_calls without id → unique ids per call (#195)', () => {
+    const res: OpenAIChatResponse = {
+      id: 'chatcmpl-multi',
+      object: 'chat.completion',
+      created: 1234567890,
+      model: 'gemma3:12b',
+      choices: [{
+        index: 0,
+        message: {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            { type: 'function', function: { name: 'a', arguments: '{}' } } as any,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            { type: 'function', function: { name: 'b', arguments: '{}' } } as any,
+          ],
+        },
+        finish_reason: 'tool_calls',
+      }],
+    }
+    const result = openaiChatToAnthropic(res, 'gemma3:12b')
+    const toolUses = result.content.filter((b) => b.type === 'tool_use')
+    expect(toolUses).toHaveLength(2)
+    if (toolUses[0].type === 'tool_use' && toolUses[1].type === 'tool_use') {
+      expect(toolUses[0].id).not.toBe(toolUses[1].id)
+      expect(toolUses[0].id.length).toBeGreaterThan(0)
+      expect(toolUses[1].id.length).toBeGreaterThan(0)
     }
   })
 

@@ -255,6 +255,75 @@ DeepSeek 的 Anthropic 兼容端点（`https://api.deepseek.com/anthropic`）对
 
 > 上游官方文档：[DeepSeek Pricing & Limits](https://api-docs.deepseek.com/quick_start/pricing)
 
+### 7. 本地模型（Ollama / LMStudio）工具调用与多轮上下文（重要）
+
+接入 Ollama / LMStudio 等本地推理服务时，多轮工具调用 + 推理（thinking）场景常见症状：
+- 第 2 轮起模型「忘记」前面工具的执行结果
+- 工具被反复调用、陷入死循环
+- 流式响应中工具调用整体被吞没（无 `tool_use` block）
+- 报 `tool_use_id` 找不到对应 `tool_use`
+
+这些通常来自**上游侧**的三个限制，光改 proxy 解决不了，必须配合本节配置：
+
+#### 7.1 `num_ctx` 必须 ≥ 32768（关键）
+
+Ollama 默认 `num_ctx=12288`（12K），但 Claude Code 的 system prompt + 工具定义本身就 30K+。**默认配置下工具定义会被 Ollama 静默截断**，模型根本看不到可调用的工具，于是要么乱调要么不调。
+
+```bash
+# Ollama: 创建持久化 Modelfile
+cat > Modelfile <<EOF
+FROM gemma3:12b
+PARAMETER num_ctx 32768
+EOF
+ollama create gemma3-32k -f Modelfile
+
+# 或临时覆盖（每次请求生效）
+curl http://localhost:11434/api/chat -d '{
+  "model": "gemma3:12b",
+  "options": {"num_ctx": 32768},
+  ...
+}'
+```
+
+LMStudio：在「Server」→「Model Settings」中显式把 Context Length 拉到 32K+。
+
+#### 7.2 模型选择：避开 Gemma 3 / Gemma 4 工具调用
+
+Gemma 3 / 4 系列**工具调用训练数据稀缺**，多轮 tool_use 场景下表现极不稳定（已知 Ollama 上游 issue [#9680](https://github.com/ollama/ollama/issues/9680) / [#15241](https://github.com/ollama/ollama/issues/15241)）。即便配置完美，仍会出现：
+- 工具参数 JSON 格式错误
+- 调用了不存在的工具
+- 多轮后完全停止调用工具
+
+**推荐替代**（按工具调用质量排序）：
+1. `qwen2.5-coder:14b` / `qwen2.5-coder:32b` — 工具调用最稳定
+2. `llama3.1:8b` / `llama3.1:70b` — 通用，工具调用可靠
+3. `qwen3:14b` — 新模型，工具调用质量在改进中
+
+#### 7.3 工具调用流式异常时禁用 streaming
+
+部分 Ollama 版本在 `stream: true` + `tools` 同时启用时，会出现：
+- `[DONE]` 标记缺失，客户端永久等待
+- tool_call 分片不完整
+- 工具参数 JSON 截断
+
+**对应做法**：在 Claude Code 侧没法直接关 streaming，但可以在 LiteLLM / 中间代理里把目标 model 的 `stream` 强制设为 `false`：
+
+```yaml
+# LiteLLM config.yaml
+model_list:
+  - model_name: gemma-local
+    litellm_params:
+      model: ollama/gemma3:12b
+      api_base: http://localhost:11434
+      stream: false   # 关键：本地模型 + tools 时关掉
+```
+
+> 本项目 proxy 已对上游响应做了修复（#195）：
+> - 上游不返回 `tool_call.id` 时合成稳定 fallback id（防止下一轮 tool_result 配对失败）
+> - 助手消息中的 thinking 内容会以 `<thinking>...</thinking>` 形式保留进下一轮 prompt（防止多轮推理上下文丢失）
+>
+> 但**第 7.1 / 7.2 / 7.3 是上游限制，必须在 Ollama / LMStudio 侧配置**。
+
 ---
 
 ## FAQ

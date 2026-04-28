@@ -423,6 +423,13 @@ function handleToolCalls(delta: DeltaEx, state: StreamState): void {
     if (tc.function?.name) block.name += tc.function.name
     if (tc.function?.arguments) block.argsBuffer += tc.function.arguments
 
+    // Some upstream providers (Ollama, certain LMStudio builds) omit tool_call.id.
+    // Synthesize a stable id from the chunk index so downstream Anthropic clients
+    // can still pair tool_use ↔ tool_result in multi-turn conversations (#195).
+    if (!block.id && block.name) {
+      block.id = `call_${tcIndex}_${Date.now().toString(36)}`
+    }
+
     // Start tool block once we have id + name
     if (!block.started && block.id && block.name) {
       block.started = true

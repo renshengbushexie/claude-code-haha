@@ -149,6 +149,7 @@ function convertUserMessage(blocks: AnthropicContentBlock[], output: OpenAIChatM
 
 function convertAssistantMessage(blocks: AnthropicContentBlock[], output: OpenAIChatMessage[]): void {
   let textContent = ''
+  let thinkingContent = ''
   const toolCalls: OpenAIToolCall[] = []
 
   for (const block of blocks) {
@@ -163,13 +164,26 @@ function convertAssistantMessage(blocks: AnthropicContentBlock[], output: OpenAI
           arguments: typeof block.input === 'string' ? block.input : JSON.stringify(block.input),
         },
       })
+    } else if (block.type === 'thinking' && typeof block.thinking === 'string') {
+      // Preserve reasoning context across multi-turn conversations (#195).
+      // OpenAI Chat Completions has no thinking field on assistant messages,
+      // so we inline it as <thinking>...</thinking> prefix on the text content.
+      // Most local models (Ollama Gemma, Qwen, etc.) tolerate this fine; some
+      // even recognize the tag. Without this, multi-turn reasoning state is
+      // silently dropped and the model loses track of prior tool decisions.
+      thinkingContent += block.thinking
     }
-    // Skip thinking blocks — no OpenAI equivalent
   }
+
+  const combinedText = thinkingContent
+    ? (textContent
+        ? `<thinking>${thinkingContent}</thinking>\n${textContent}`
+        : `<thinking>${thinkingContent}</thinking>`)
+    : textContent
 
   const msg: OpenAIChatMessage = {
     role: 'assistant',
-    content: textContent || null,
+    content: combinedText || null,
   }
 
   if (toolCalls.length > 0) {
