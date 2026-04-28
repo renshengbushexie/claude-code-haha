@@ -55,8 +55,8 @@ export function isNonCustomOpusModel(model: ModelName): boolean {
  * Priority order within this function:
  * 1. Model override during session (from /model command) - highest priority
  * 2. Model override at startup (from --model flag)
- * 3. ANTHROPIC_MODEL environment variable
- * 4. Settings (from user's saved settings)
+ * 3. Settings (from user's saved settings, written by /model)
+ * 4. ANTHROPIC_MODEL environment variable
  */
 export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   let specifiedModel: ModelSetting | undefined
@@ -66,7 +66,11 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
     specifiedModel = modelOverride
   } else {
     const settings = getSettings_DEPRECATED() || {}
-    specifiedModel = process.env.ANTHROPIC_MODEL || settings.model || undefined
+    // settings.model takes precedence over ANTHROPIC_MODEL because the
+    // user explicitly chose it via /model and expects that choice to stick
+    // across restarts (issues #191/#196/#202). Operators who want the env
+    // var to win can simply omit `model` from settings.json.
+    specifiedModel = settings.model || process.env.ANTHROPIC_MODEL || undefined
   }
 
   // Ignore the user-specified model if it's not in the availableModels allowlist.
@@ -83,8 +87,8 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
  * Model Selection Priority Order:
  * 1. Model override during session (from /model command) - highest priority
  * 2. Model override at startup (from --model flag)
- * 3. ANTHROPIC_MODEL environment variable
- * 4. Settings (from user's saved settings)
+ * 3. Settings (from user's saved settings, written by /model)
+ * 4. ANTHROPIC_MODEL environment variable
  * 5. Built-in default
  *
  * @returns The resolved model name to use

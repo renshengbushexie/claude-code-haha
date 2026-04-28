@@ -15,6 +15,8 @@ import { checkOpus1mAccess, checkSonnet1mAccess } from '../../utils/model/check1
 import { getDefaultMainLoopModelSetting, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { validateModel } from '../../utils/model/validateModel.js';
+import { updateSettingsForSource } from '../../utils/settings/settings.js';
+import { logError } from '../../utils/log.js';
 function ModelPickerWrapper(t0) {
   const $ = _c(17);
   const {
@@ -55,6 +57,13 @@ function ModelPickerWrapper(t0) {
         mainLoopModel: model,
         mainLoopModelForSession: null
       }));
+      // Persist to ~/.claude/settings.json so the choice survives restart.
+      const persistResult_0 = updateSettingsForSource('userSettings', {
+        model: model ?? undefined,
+      });
+      if (persistResult_0.error) {
+        logError(persistResult_0.error);
+      }
       let message = `Set model to ${chalk.bold(renderModelLabel(model))}`;
       if (effort !== undefined) {
         message = message + ` with ${chalk.bold(effort)} effort`;
@@ -201,6 +210,15 @@ function SetModelAndClose({
         mainLoopModel: modelValue,
         mainLoopModelForSession: null
       }));
+      // Persist to ~/.claude/settings.json so the choice survives restart.
+      // Passing `undefined` (for /model default) deletes the key via mergeWith
+      // customizer in updateSettingsForSource, restoring built-in default.
+      const persistResult = updateSettingsForSource('userSettings', {
+        model: modelValue ?? undefined,
+      });
+      if (persistResult.error) {
+        logError(persistResult.error);
+      }
       let message = `Set model to ${chalk.bold(renderModelLabel(modelValue))}`;
       let wasFastModeToggledOn = undefined;
       if (isFastModeEnabled()) {

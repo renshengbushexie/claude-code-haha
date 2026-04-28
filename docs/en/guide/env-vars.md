@@ -6,7 +6,7 @@
 | `ANTHROPIC_API_KEY` | One of two | API key sent via the `x-api-key` header |
 | `ANTHROPIC_AUTH_TOKEN` | One of two | Auth token sent via the `Authorization: Bearer` header |
 | `ANTHROPIC_BASE_URL` | No | Custom API endpoint, defaults to Anthropic |
-| `ANTHROPIC_MODEL` | No | Default model |
+| `ANTHROPIC_MODEL` | No | Default model (**lower priority than the `/model` command**, see note below) |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | No | Sonnet-tier model mapping |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | No | Haiku-tier model mapping |
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` | No | Opus-tier model mapping |
@@ -60,3 +60,16 @@ CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 ```
 
 > Priority: Environment variables > `.env` file > `~/.claude/settings.json`
+
+## Model Selection Priority (`ANTHROPIC_MODEL` vs `/model`)
+
+cc-haha resolves the runtime model in the following order (higher overrides lower):
+
+1. **Runtime overrides** (e.g. plan-mode temporary switch, `--model` CLI flag)
+2. **Model picked via `/model`** (persisted to the `model` field in `~/.claude/settings.json`)
+3. **`ANTHROPIC_MODEL` environment variable**
+4. Tier mapping variables (`ANTHROPIC_DEFAULT_SONNET_MODEL`, etc.)
+5. Built-in default model
+
+> ⚠️ **Behavior change (fixes [#191](https://github.com/NanmiCoder/cc-haha/issues/191) / [#196](https://github.com/NanmiCoder/cc-haha/issues/196) / [#202](https://github.com/NanmiCoder/cc-haha/issues/202))**: In earlier builds `ANTHROPIC_MODEL` outranked `/model`, so `/model` selections did not persist. After the fix, `/model` writes to `~/.claude/settings.json` and overrides `ANTHROPIC_MODEL`. If you prefer the old env-wins behavior, delete the `model` field from `~/.claude/settings.json` or pick `Use default` in the `/model` menu (resets to built-in default).
+
