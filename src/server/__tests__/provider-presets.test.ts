@@ -58,6 +58,7 @@ describe('provider presets API', () => {
     const deepseek = PROVIDER_PRESETS.find((preset) => preset.id === 'deepseek')
     const zhipu = PROVIDER_PRESETS.find((preset) => preset.id === 'zhipuglm')
     const kimi = PROVIDER_PRESETS.find((preset) => preset.id === 'kimi')
+    const kimiCoding = PROVIDER_PRESETS.find((preset) => preset.id === 'kimi-coding')
     const minimax = PROVIDER_PRESETS.find((preset) => preset.id === 'minimax')
 
     expect(deepseek?.defaultModels.main).toBe('deepseek-chat')
@@ -67,6 +68,14 @@ describe('provider presets API', () => {
     expect(zhipu?.defaultModels.sonnet).toBe('glm-5-turbo')
     expect(zhipu?.defaultModels.opus).toBe('glm-5.1')
     expect(kimi?.defaultModels.main).toBe('kimi-k2.6')
+    expect(kimi?.baseUrl).toBe('https://api.moonshot.cn/anthropic')
+    // Kimi for Coding is the subscription-based coding-optimized service.
+    // Distinct from the general Moonshot Open Platform: different domain
+    // (api.kimi.com vs api.moonshot.cn), different billing (membership vs
+    // pay-per-token), and non-interchangeable API keys. See cc-haha #194.
+    expect(kimiCoding?.baseUrl).toBe('https://api.kimi.com/coding/')
+    expect(kimiCoding?.defaultModels.main).toBe('kimi-for-coding')
+    expect(kimiCoding?.apiFormat).toBe('anthropic')
     expect(minimax?.defaultModels.main).toBe('MiniMax-M2.7')
   })
 

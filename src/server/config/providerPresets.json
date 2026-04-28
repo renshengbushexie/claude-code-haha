@@ -93,6 +93,21 @@
     "websiteUrl": "https://platform.moonshot.cn"
   },
   {
+    "id": "kimi-coding",
+    "name": "Kimi for Coding",
+    "baseUrl": "https://api.kimi.com/coding/",
+    "apiFormat": "anthropic",
+    "authMode": "apikey",
+    "defaultModels": {
+      "main": "kimi-for-coding",
+      "haiku": "kimi-for-coding",
+      "sonnet": "kimi-for-coding",
+      "opus": "kimi-for-coding"
+    },
+    "needsApiKey": true,
+    "websiteUrl": "https://www.kimi.com/code"
+  },
+  {
     "id": "minimax",
     "name": "MiniMax",
     "baseUrl": "https://api.minimaxi.com/anthropic",
