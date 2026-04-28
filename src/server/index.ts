@@ -15,6 +15,7 @@ import { handleProxyRequest } from './proxy/handler.js'
 import { ProviderService } from './services/providerService.js'
 import { handleHahaOAuthCallback } from './api/haha-oauth.js'
 import { ensureDesktopCliLauncherInstalled } from './services/desktopCliLauncherService.js'
+import { ensureRuntime, shutdownRuntime } from './runtimeSidecar.js'
 
 function readArgValue(flag: string): string | undefined {
   const args = process.argv.slice(2)
@@ -226,6 +227,13 @@ export function startServer(port = PORT, host = HOST) {
     )
   })
 
+  void ensureRuntime().catch((error) => {
+    console.error(
+      '[runtime] sidecar startup failed:',
+      error instanceof Error ? error.message : error,
+    )
+  })
+
   console.log(`[Server] Claude Code API server running at http://${host}:${port}`)
   return server
 }
@@ -243,16 +251,26 @@ function cleanupAllSessions() {
   }
 }
 
-process.on('SIGTERM', () => {
-  console.log('[Server] Received SIGTERM')
+async function gracefulShutdown(signal: string, exitCode = 0): Promise<void> {
+  console.log(`[Server] Received ${signal}`)
   cleanupAllSessions()
-  process.exit(0)
+  try {
+    await shutdownRuntime()
+  } catch (error) {
+    console.error(
+      '[runtime] sidecar shutdown error:',
+      error instanceof Error ? error.message : error,
+    )
+  }
+  process.exit(exitCode)
+}
+
+process.on('SIGTERM', () => {
+  void gracefulShutdown('SIGTERM')
 })
 
 process.on('SIGINT', () => {
-  console.log('[Server] Received SIGINT')
-  cleanupAllSessions()
-  process.exit(0)
+  void gracefulShutdown('SIGINT')
 })
 
 process.on('exit', () => {
