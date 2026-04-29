@@ -75,9 +75,46 @@ console.log(`[test] before SIGTERM: endpoint=${existsSync(endpointFile)} db=${ex
 console.log("[test] sending shutdown signal...")
 let killSent: boolean | string
 if (process.platform === "win32") {
+  // Windows has no SIGTERM. The only way to deliver a graceful Ctrl+C to a
+  // child process group is via Win32 AttachConsole + GenerateConsoleCtrlEvent.
+  // taskkill /T without /F refuses to terminate the Bun child (it requires /F),
+  // and /F is a hard kill that bypasses graceful shutdown handlers entirely.
+  // We therefore shell out to a PowerShell one-liner that performs the same
+  // FreeConsole / AttachConsole(pid) / GenerateConsoleCtrlEvent(CTRL_C, 0)
+  // dance that scripts/verify-graceful-shutdown.ps1 uses.
   const { spawnSync } = await import("node:child_process")
-  const r = spawnSync("taskkill", ["/pid", String(child.pid), "/T"], { encoding: "utf8" })
-  killSent = `taskkill exit=${r.status} stdout=${r.stdout?.trim()} stderr=${r.stderr?.trim()}`
+  const psScript = `
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class CtrlSender {
+  [DllImport("kernel32.dll", SetLastError = true)]
+  public static extern bool GenerateConsoleCtrlEvent(uint dwCtrlEvent, uint dwProcessGroupId);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  public static extern bool AttachConsole(uint dwProcessId);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  public static extern bool FreeConsole();
+  [DllImport("kernel32.dll", SetLastError = true)]
+  public static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
+}
+"@
+[CtrlSender]::FreeConsole() | Out-Null
+$attached = [CtrlSender]::AttachConsole([uint32]${child.pid})
+if (-not $attached) { Write-Error "AttachConsole failed: $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error())"; exit 2 }
+[CtrlSender]::SetConsoleCtrlHandler([IntPtr]::Zero, $true) | Out-Null
+$sent = [CtrlSender]::GenerateConsoleCtrlEvent(0, 0)
+if (-not $sent) { Write-Error "GenerateConsoleCtrlEvent failed: $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error())"; exit 3 }
+[CtrlSender]::FreeConsole() | Out-Null
+[CtrlSender]::SetConsoleCtrlHandler([IntPtr]::Zero, $false) | Out-Null
+exit 0
+`
+  const r = spawnSync(
+    "powershell",
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript],
+    { encoding: "utf8" },
+  )
+  killSent = `ctrl-c via powershell exit=${r.status} stdout=${r.stdout?.trim()} stderr=${r.stderr?.trim()}`
 } else {
   killSent = child.kill("SIGTERM")
 }
@@ -97,7 +134,7 @@ console.log(`[test] after exit: endpoint=${endpointAfter}`)
 
 const allOut = stdoutLines.concat(stderrLines).join("\n")
 const checks: Array<[string, boolean]> = [
-  ["graceful shutdown handler ran", /graceful|Graceful/.test(allOut)],
+  ["graceful shutdown handler ran", /graceful|Graceful|Received SIG(INT|TERM)|shutting_down/.test(allOut)],
   ["runtime sidecar shutdown logged", /\[runtime\][^\n]*(shutdown|stopping|stopped|exit)/i.test(allOut)],
   ["runtime endpoint cleaned up", !endpointAfter],
   ["clean exit", exitCode === 0 || exitSignal === "SIGTERM"],
