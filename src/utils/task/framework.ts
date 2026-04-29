@@ -7,6 +7,10 @@ import {
   TASK_TYPE_TAG,
   TOOL_USE_ID_TAG,
 } from '../../constants/xml.js'
+import {
+  mirrorTaskCreated,
+  mirrorTaskTransition,
+} from '../../runtime/taskMirror.js'
 import type { AppState } from '../../state/AppState.js'
 import {
   isTerminalTaskStatus,
@@ -61,6 +65,9 @@ export function updateTaskState<T extends TaskState>(
       // spread so s.tasks subscribers don't re-render on unchanged state.
       return prev
     }
+    if (updated.status !== task.status) {
+      mirrorTaskTransition(taskId, updated.status)
+    }
     return {
       ...prev,
       tasks: {
@@ -100,6 +107,14 @@ export function registerTask(task: TaskState, setAppState: SetAppState): void {
 
   // Replacement (resume) — not a new start. Skip to avoid double-emit.
   if (isReplacement) return
+
+  mirrorTaskCreated({
+    localTaskId: task.id,
+    prompt:
+      'prompt' in task && typeof task.prompt === 'string'
+        ? task.prompt
+        : task.description,
+  })
 
   enqueueSdkEvent({
     type: 'system',

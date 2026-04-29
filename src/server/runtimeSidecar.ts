@@ -100,3 +100,16 @@ export function getRuntimeStatus(): { kind: SidecarState['kind']; reason?: strin
       return { kind: state.kind }
   }
 }
+
+/**
+ * Test-only seam: injects a pre-started RuntimeHandle into the singleton so
+ * verification scripts can drive a sidecar they own (with a temp dataDir)
+ * without races against ensureRuntime() spawning a second one. NOT for prod.
+ */
+export function __setRuntimeHandleForTest(handle: RuntimeHandle | null): void {
+  if (handle === null) {
+    state = { kind: 'idle' }
+  } else {
+    state = { kind: 'ready', handle }
+  }
+}

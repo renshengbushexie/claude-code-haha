@@ -12,3 +12,9 @@ export {
   type TaskState,
   type TaskTransition,
 } from './goClient'
+export {
+  mirrorTaskCreated,
+  mirrorTaskKilled,
+  mirrorTaskTransition,
+  type MirrorCreateInput,
+} from './taskMirror'
